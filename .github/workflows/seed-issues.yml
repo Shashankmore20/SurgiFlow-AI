@@ -1,0 +1,25 @@
+name: Seed kanban issues
+
+on:
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create labels and issues from tasks.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          while IFS='|' read -r label title; do
+            [ -z "$title" ] && continue
+            gh label create "$label" --force > /dev/null
+            gh issue create --title "$title" --label "$label" --body "Seeded from tasks.txt"
+          done < tasks.txt
