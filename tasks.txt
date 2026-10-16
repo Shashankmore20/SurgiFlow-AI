@@ -1,0 +1,42 @@
+setup|1.1 Fill in repo and tracker links in the proposal
+setup|1.2 Create repo and board; agree on folder structure
+setup|1.3 Pin scope: 2-3 hospitals, fixed travel-time matrix
+setup|1.4 Write MVP / Target / Stretch tiers
+setup|1.5 Define shared state, action, and metric interfaces
+setup|1.6 Pin objective weights (wait, delay, overtime, disruption, workload balance)
+setup|1.7 Search emergency/ambulance patient-allocation literature; add 2-3 verified refs
+setup|1.8 Re-check Gap claim against allocation literature
+setup|1.9 Review proposal feedback and adjust plan
+simulator|2.1 Build discrete-event simulator core (surgeries, rooms, surgeons, clock)
+simulator|2.2 Add hospital-network layer (ORs, recovery/ICU beds, travel-time matrix)
+simulator|2.3 Add random durations and overruns
+simulator|2.4 Add cancellations and simultaneous emergency arrivals
+simulator|2.5 Add recovery-bed shortage layer (optional)
+simulator|2.6 Write seeded instance generator
+simulator|2.7 Implement scheduling baselines (FCFS, priority-first)
+simulator|2.8 Implement allocation baselines (nearest hospital, capacity-aware heuristic)
+simulator|2.9 Build evaluation harness (wait, response delay, utilization, disruptions, feasibility, workload)
+simulator|2.10 Make Gantt-style visualization of rooms rearranging
+search-replanning|3.1 Define schedule representation and neighbor moves
+search-replanning|3.2 Define cost function and stability penalty
+search-replanning|3.3 Implement SA for static scheduling
+search-replanning|3.4 Implement GA for static scheduling
+search-replanning|3.5 Add warm-start replanning on disruption
+search-replanning|3.6 Tune SA cooling and GA population/mutation
+search-replanning|3.7 Plug in emergency allocation decision
+search-replanning|3.8 Benchmark against baselines across multiple seeds
+search-replanning|3.9 Write up SA vs. GA comparison
+rl|4.1 Formulate MDP (state, actions, reward)
+rl|4.2 Discretize state space for tabular methods
+rl|4.3 Implement Q-learning from scratch
+rl|4.4 Implement SARSA from scratch
+rl|4.5 Set up training loop with epsilon-greedy and decay
+rl|4.6 Train and log learning curves
+rl|4.7 Compare Q-learning vs. SARSA vs. SA/GA vs. baselines on same seeds
+rl|4.8 Ablation (stretch): with vs. without bed shortages
+deliverables|5.1 Run full controlled comparison across all methods
+deliverables|5.2 Make results tables and plots
+deliverables|5.3 Write error and failure analysis
+deliverables|5.4 Write final report
+deliverables|5.5 Build demo and slides
+deliverables|5.6 Cite GenAI use as the course requires
