@@ -28,3 +28,15 @@ Configs that have produced results are never edited; add a new config instead.
 **Why:** Small enough to debug and train quickly; capability differences make "nearest hospital" a poor policy, which is the gap the proposal targets.
 **Alternatives:** Real road maps (too complex); identical hospitals (allocation becomes trivial).
 **Revisit:** Once baselines and first methods work → add `large.json` / `surge.json`.
+
+## D6 — Discrete-event simulator core (task 2.1)
+**Decision:** A heap of timed events (ARRIVAL, END). The clock jumps to the earliest event; ties keep insertion order. After every event, free rooms are filled by a pluggable `policy(waiting, clock) -> surgery` (FIFO by default). Output is a log of surgery, room, arrival, start, end.
+**Why:** Exact times and no wasted steps, so it's fast enough for RL training. The policy plug-in lets SA/GA/RL replace FIFO without changing the engine.
+**Alternatives:** Fixed time steps (simpler, but slower and less precise).
+**Revisit:** The policy will likely need more state (rooms, hospital, beds); defined in task 1.5.
+
+## D7 — Inter-hospital transfers
+**Decision:** Add `transfer_time_min` (3x3 hospital -> hospital) to `base.json`, alongside the 4x3 zone -> hospital `travel_time_min`. Only waiting patients (not mid-surgery) can be transferred, only to a hospital capable of their procedure. Transfer time adds to their wait, and the objective adds a small per-transfer penalty. Transferring is a policy action.
+**Why:** An overloaded hospital can hand patients to one with free capacity, which is the network-coordination gap in the proposal.
+**Alternatives:** No transfers (allocation only at arrival); post-surgery ICU transfers (deferred to task 2.5).
+**Revisit:** When setting objective weights (1.6), tune the transfer penalty.
