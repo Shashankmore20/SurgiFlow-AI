@@ -1,10 +1,9 @@
 import heapq
 import itertools
-from dataclasses import dataclass
-from typing import Optional
-
+import json
 from dataclasses import dataclass, field
 from typing import List, Optional
+
 ## there are 3 entities surgery, operatingroom and simstate
 
 ##surgery has facts like: id, duration, priority, emergency, arrival time
@@ -29,6 +28,8 @@ class Hospital:
     id: int
     n_rooms: int
     recovery_beds: int = 0   # capacity only for now; enforced in 2.5
+    name: str = ""
+    capabilities: List[str] = field(default_factory=list)
     rooms: List[OperatingRoom] = field(default_factory=list)
     waiting: List[Surgery] = field(default_factory=list)
 
@@ -37,26 +38,60 @@ class Hospital:
 
 
 class Network:
-    """Hospitals plus a travel-time matrix (minutes) between them."""
+    """Hospitals plus two travel tables (minutes).
 
-    def __init__(self, hospitals, travel):
-        n = len(hospitals)
-        if len(travel) != n or any(len(row) != n for row in travel):
-            raise ValueError("travel matrix must be n x n")
-        if any(travel[i][i] != 0 for i in range(n)):
-            raise ValueError("travel time from a hospital to itself must be 0")
-        if any(t < 0 for row in travel for t in row):
-            raise ValueError("travel times must be non-negative")
+    travel_time_min:   zones x hospitals (sending an emergency patient)
+    transfer_time_min: hospitals x hospitals (moving a waiting patient)
+    """
+
+    def __init__(self, hospitals, zones, travel_time_min, transfer_time_min=None):
+        n_h, n_z = len(hospitals), len(zones)
+        if [h.id for h in hospitals] != list(range(n_h)):
+            raise ValueError("hospital ids must be 0..n-1 in order")
+
+        if len(travel_time_min) != n_z or any(len(r) != n_h for r in travel_time_min):
+            raise ValueError("travel_time_min must be zones x hospitals")
+        if any(t < 0 for row in travel_time_min for t in row):
+            raise ValueError("travel_time_min must be non-negative")
+
+        if transfer_time_min is not None:
+            if len(transfer_time_min) != n_h or any(len(r) != n_h for r in transfer_time_min):
+                raise ValueError("transfer_time_min must be hospitals x hospitals")
+            if any(transfer_time_min[i][i] != 0 for i in range(n_h)):
+                raise ValueError("transfer time from a hospital to itself must be 0")
+            if any(t < 0 for row in transfer_time_min for t in row):
+                raise ValueError("transfer_time_min must be non-negative")
+
         self.hospitals = hospitals
-        self.travel = travel
+        self.zones = zones
+        self.travel_time_min = travel_time_min
+        self.transfer_time_min = transfer_time_min
 
     @classmethod
     def single(cls, n_rooms):
-        return cls([Hospital(0, n_rooms)], [[0]])
+        return cls([Hospital(0, n_rooms)], ["Z0"], [[0]], [[0]])
 
-    def travel_time(self, a, b):
-        return self.travel[a][b]
+    @classmethod
+    def from_config(cls, path):
+        with open(path) as f:
+            cfg = json.load(f)
+        hospitals = [
+            Hospital(id=h["id"], n_rooms=h["n_or"], recovery_beds=h["n_icu_beds"],
+                     name=h["name"], capabilities=h["capabilities"])
+            for h in cfg["hospitals"]
+        ]
+        return cls(hospitals, cfg["zones"], cfg["travel_time_min"],
+                   cfg.get("transfer_time_min"))
 
+    def travel_time(self, zone, hospital):
+        return self.travel_time_min[zone][hospital]
+
+    def transfer_time(self, a, b):
+        if self.transfer_time_min is None:
+            raise ValueError("transfer_time_min was not provided")
+        return self.transfer_time_min[a][b]
+
+    
 ## policy funtion to decide which surgery goes next
 ## will call any of the functions we hand it (SA, GA or RL)
 def fifo_policy(waiting, clock):
@@ -99,16 +134,16 @@ class Simulator:
             self._dispatch()
 
     ##runs after every event and fills any free room from the waiting list
-        def _dispatch(self):
-            for h in self.network.hospitals:
-                for room in h.rooms:
-                    if room.current is None and h.waiting:
-                        s = self.policy(h.waiting, self.clock)
-                        h.waiting.remove(s)
-                        room.current = s
-                        end = self.clock + s.duration
-                        self.log.append({
-                            "surgery": s.id, "hospital": h.id, "room": room.id,
-                            "arrival": s.arrival, "start": self.clock, "end": end,
-                        })
-                        self.schedule(end, "END", room)
+    def _dispatch(self):
+        for h in self.network.hospitals:
+            for room in h.rooms:
+                if room.current is None and h.waiting:
+                    s = self.policy(h.waiting, self.clock)
+                    h.waiting.remove(s)
+                    room.current = s
+                    end = self.clock + s.duration
+                    self.log.append({
+                        "surgery": s.id, "hospital": h.id, "room": room.id,
+                        "arrival": s.arrival, "start": self.clock, "end": end,
+                    })
+                    self.schedule(end, "END", room)
