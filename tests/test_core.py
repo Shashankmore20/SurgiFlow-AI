@@ -1,5 +1,5 @@
-from  surgiflow.sim.core import Simulator, Surgery
-
+from  surgiflow.sim.core import Simulator, Surgery, Network, Hospital
+import pytest 
 
 def make_sim():
     sim = Simulator(n_rooms=2)
@@ -32,3 +32,37 @@ def test_no_room_overlap():
 
 def test_deterministic():
     assert make_sim().log == make_sim().log
+
+def two_hospitals():
+    return Network([Hospital(0, 1), Hospital(1, 1)], [[0, 10], [10, 0]])
+
+
+def test_hospitals_run_independently():
+    sim = Simulator(two_hospitals())
+    sim.add_surgery(Surgery("A", 60), 0, hospital=0)
+    sim.add_surgery(Surgery("B", 60), 0, hospital=1)
+    sim.run()
+    r = by_id(sim)
+    assert r["A"]["start"] == 0 and r["B"]["start"] == 0
+    assert (r["A"]["hospital"], r["B"]["hospital"]) == (0, 1)
+
+
+def test_queues_are_per_hospital():
+    sim = Simulator(two_hospitals())
+    sim.add_surgery(Surgery("A", 60), 0, hospital=0)
+    sim.add_surgery(Surgery("B", 30), 0, hospital=0)
+    sim.add_surgery(Surgery("C", 30), 0, hospital=1)
+    sim.run()
+    r = by_id(sim)
+    assert r["B"]["start"] == 60   # waits behind A at hospital 0
+    assert r["C"]["start"] == 0    # hospital 1 is free
+
+
+def test_travel_time_lookup():
+    assert two_hospitals().travel_time(0, 1) == 10
+
+def test_bad_travel_matrix_rejected():
+    with pytest.raises(ValueError):
+        Network([Hospital(0, 1), Hospital(1, 1)], [[0, 10]])
+    with pytest.raises(ValueError):
+        Network([Hospital(0, 1)], [[5]])
