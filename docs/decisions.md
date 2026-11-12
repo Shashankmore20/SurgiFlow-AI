@@ -40,3 +40,9 @@ Configs that have produced results are never edited; add a new config instead.
 **Why:** An overloaded hospital can hand patients to one with free capacity, which is the network-coordination gap in the proposal.
 **Alternatives:** No transfers (allocation only at arrival); post-surgery ICU transfers (deferred to task 2.5).
 **Revisit:** When setting objective weights (1.6), tune the transfer penalty.
+
+## D8 — Objective function (task 1.6)
+**Decision:** Cost = 1·wait + 10·delay + 0.5·overtime + 0.2·disruption + 100·imbalance + 15·transfers (weights in `base.json`). Emergency wait is multiplied by urgency (critical x4, urgent x2, semi-urgent x1). All components are also reported separately.
+**Why:** Priority order: missed deadlines > critical waits > other waits > overtime > disruption and balance. One shared function makes every method's score comparable.
+**Alternatives:** Optimizing each metric separately (multi-objective, hard to compare); unweighted sum (minutes of overtime would count as much as minutes a critical patient waits).
+**Revisit:** Sensitivity analysis on the weights once methods are working.
