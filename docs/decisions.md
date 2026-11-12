@@ -30,7 +30,7 @@ Configs that have produced results are never edited; add a new config instead.
 **Revisit:** Once baselines and first methods work → add `large.json` / `surge.json`.
 
 ## D6 — Discrete-event simulator core (task 2.1)
-**Decision:** A heap of timed events (ARRIVAL, END). The clock jumps to the earliest event; ties keep insertion order. After every event, free rooms are filled by a pluggable `policy(waiting, clock) -> surgery` (FIFO by default). Output is a log of surgery, room, arrival, start, end.
+**Decision:** A heap of timed events (ARRIVAL, END). The clock jumps to the earliest event; ties keep insertion order. After every event, free rooms are filled by a pluggable scheduling policy (signature updated in D9) (FIFO by default). Output is a log of surgery, room, arrival, start, end.
 **Why:** Exact times and no wasted steps, so it's fast enough for RL training. The policy plug-in lets SA/GA/RL replace FIFO without changing the engine.
 **Alternatives:** Fixed time steps (simpler, but slower and less precise).
 **Revisit:** The policy will likely need more state (rooms, hospital, beds); defined in task 1.5.
@@ -46,3 +46,17 @@ Configs that have produced results are never edited; add a new config instead.
 **Why:** Priority order: missed deadlines > critical waits > other waits > overtime > disruption and balance. One shared function makes every method's score comparable.
 **Alternatives:** Optimizing each metric separately (multi-objective, hard to compare); unweighted sum (minutes of overtime would count as much as minutes a critical patient waits).
 **Revisit:** Sensitivity analysis on the weights once methods are working.
+
+## D9 — Shared interfaces (task 1.5)
+**Decision:**
+- `Surgery` is the one shared patient type. New fields: `urgency`, `procedure`, `zone`, `needs_icu`, `expected_duration`, `planned_room`, `planned_start`, `transfers`. `duration` is the true duration.
+- Generator (2.6): `generate(config, seed) -> Instance` (electives + emergencies). All randomness lives here, including later overruns, cancellations and surges.
+- Simulator: `Instance` + policies -> log. Deterministic.
+- Scheduling policy: `policy(hospital, clock) -> Surgery | None` (None keeps the room free).
+- Allocation policy: `allocate(patient, network, clock) -> hospital id`.
+- Every log record has the fields in `interfaces.LOG_FIELDS`, which the objective reads.
+**Rules:** policies see `expected_duration`, never `duration`; policies never modify the network; an emergency's `arrival` is its call time (wait includes travel); an elective's `arrival` is its `planned_start`.
+**Why:** Lets generator, simulator and policies be built and tested in parallel; the same seed gives every method identical inputs.
+**Alternatives:** Randomness inside the simulator (methods would face different days; harder to test).
+**Revisit:** Add the transfer hook in 2.11.
+

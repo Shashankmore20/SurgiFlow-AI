@@ -9,9 +9,9 @@ Expected record format (one dict per surgery in the log):
     room           int    room id within that hospital
     kind           str    "emergency" or "elective"
     urgency        int    1/2/3 for emergencies, None for electives
-    arrival        float  minute the patient became ready (emergencies)
+    arrival        float  emergencies: minute the call came in (wait includes travel)
     start, end     float  surgery start and end minute
-    planned_start  float  original booked start (electives only)
+    planned_start  float  original booked start (electives; None = no plan)
     transfers      int    times this patient was moved between hospitals
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ def objective_components(records, config):
             waited = r["start"] - r["arrival"]
             wait += obj["urgency_wait_multiplier"][str(r["urgency"])] * waited
             delay += max(0.0, waited - max_wait[r["urgency"]])
-        else:
+        elif r.get("planned_start") is not None:
             disruption += abs(r["start"] - r["planned_start"])
         transfers += r.get("transfers", 0)
 

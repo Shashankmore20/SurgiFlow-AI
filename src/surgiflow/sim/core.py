@@ -6,16 +6,32 @@ from typing import List, Optional
 
 ## there are 3 entities surgery, operatingroom and simstate
 
-##surgery has facts like: id, duration, priority, emergency, arrival time
-##so we initialize here 
+## Surgery is the shared patient type (task 1.5): every module uses it.
+## The generator (2.6) fills in everything except `hospital` (for emergencies),
+## `arrival` stamping and `transfers`, which the simulator manages.
 @dataclass
 class Surgery:
     id: str
-    duration: int            # minutes
-    priority: int = 0        # higher = more urgent (unused by FIFO)
+    duration: int                       # TRUE minutes; only the simulator reads this
     emergency: bool = False
-    arrival: int = 0         # filled in when the surgery arrives
-    hospital: int = 0        # which hospital is booked at 
+    urgency: Optional[int] = None       # 1 critical, 2 urgent, 3 semi-urgent; None = elective
+    procedure: str = "general"          # "general" | "cardiac" | "trauma"
+    zone: Optional[int] = None          # where an emergency call came from
+    needs_icu: bool = False
+    expected_duration: Optional[int] = None   # what policies may see (defaults to duration)
+    planned_room: Optional[int] = None  # electives: booked room
+    planned_start: Optional[int] = None # electives: booked start minute
+    arrival: int = 0                    # emergency: call time; elective: when it becomes available
+    hospital: int = 0                   # hospital it is booked at / sent to
+    transfers: int = 0                  # times moved between hospitals (2.11)
+
+    def __post_init__(self):
+        if self.expected_duration is None:
+            self.expected_duration = self.duration
+
+    @property
+    def kind(self):
+        return "emergency" if self.emergency else "elective"
 
 ## a room can be emoty or holds the surgery in progress
 @dataclass
@@ -94,9 +110,12 @@ class Network:
     
 ## policy funtion to decide which surgery goes next
 ## will call any of the functions we hand it (SA, GA or RL)
-def fifo_policy(waiting, clock):
+## Scheduling policy contract (task 1.5): policy(hospital, clock) -> Surgery or None.
+## It may read hospital.waiting, hospital.rooms, etc., but must not modify them.
+## Returning None leaves the free room idle for now.
+def fifo_policy(hospital, clock):
     """Pick the surgery that has been waiting longest."""
-    return waiting[0]
+    return hospital.waiting[0]
 
 #
 class Simulator:
@@ -137,13 +156,18 @@ class Simulator:
     def _dispatch(self):
         for h in self.network.hospitals:
             for room in h.rooms:
-                if room.current is None and h.waiting:
-                    s = self.policy(h.waiting, self.clock)
-                    h.waiting.remove(s)
-                    room.current = s
-                    end = self.clock + s.duration
-                    self.log.append({
-                        "surgery": s.id, "hospital": h.id, "room": room.id,
-                        "arrival": s.arrival, "start": self.clock, "end": end,
-                    })
-                    self.schedule(end, "END", room)
+                if room.current is not None or not h.waiting:
+                    continue
+                s = self.policy(h, self.clock)
+                if s is None:          # policy chose to keep this room free
+                    break
+                h.waiting.remove(s)
+                room.current = s
+                end = self.clock + s.duration
+                self.log.append({
+                    "surgery": s.id, "hospital": h.id, "room": room.id,
+                    "kind": s.kind, "urgency": s.urgency, "procedure": s.procedure,
+                    "arrival": s.arrival, "start": self.clock, "end": end,
+                    "planned_start": s.planned_start, "transfers": s.transfers,
+                })
+                self.schedule(end, "END", room)
