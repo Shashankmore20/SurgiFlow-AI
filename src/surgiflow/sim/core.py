@@ -193,6 +193,14 @@ class Simulator:
                         {"surgery": data.id, "hospital": h.id, "time": self.clock})
             self._dispatch()
 
+    ## patients who never got surgery: still in a queue, or still on their way
+    ## (a CALL/ARRIVAL event that hadn't happened yet when run() stopped).
+    ## Cancelled surgeries are not included. The objective penalizes these (D10).
+    def unserved(self):
+        out = [s for h in self.network.hospitals for s in h.waiting]
+        out += [data for _, _, kind, data in self._events if kind in ("CALL", "ARRIVAL")]
+        return out
+
     def _on_call(self, s):
         h = self.allocate(s, self.network, self.clock)
         if s.procedure not in self.network.hospitals[h].capabilities:

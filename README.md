@@ -6,6 +6,7 @@ We use the course conda environment (Python 3.14).
 conda create -n FAI python=3.14 -c conda-forge   # skip if you already have it
 conda activate FAI
 pip install -r requirements.txt
+pip install -e .      # makes `import surgiflow` work everywhere
 ```
 
 ## Repository structure

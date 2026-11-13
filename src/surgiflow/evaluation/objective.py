@@ -21,8 +21,10 @@ from collections import defaultdict
 from statistics import pstdev
 
 
-def objective_components(records, config):
+def objective_components(records, config, unserved=()):
+    """`records` = sim.log, `unserved` = sim.unserved() (patients never operated on)."""
     regular = config["regular_hours_min"]
+    horizon = config.get("horizon_min", 1440)
     max_wait = {u["level"]: u["max_wait_min"]
                 for u in config["emergencies"]["urgency_levels"]}
     obj = config["objective"]
@@ -43,10 +45,25 @@ def objective_components(records, config):
             disruption += abs(r["start"] - r["planned_start"])
         transfers += r.get("transfers", 0)
 
-        key = (r["hospital"], r["room"])
-        freed = r.get("room_release") or r["end"]
-        room_last_end[key] = max(room_last_end.get(key, 0.0), freed)
+        # Overtime = the regular day running late (D10): only surgeries that
+        # STARTED in regular hours count. Night emergencies are on-call work.
+        if r["start"] < regular:
+            key = (r["hospital"], r["room"])
+            freed = r.get("room_release") or r["end"]
+            room_last_end[key] = max(room_last_end.get(key, 0.0), freed)
         busy[r["hospital"]] += r["end"] - r["start"]
+
+    # Patients never operated on (D10). Emergencies keep accumulating wait and
+    # delay until the end of the horizon; electives count as disrupted until then.
+    # Both also get a flat per-patient penalty, so "just don't operate" never pays.
+    for s in unserved:
+        if s.emergency:
+            call = s.call_time if s.call_time is not None else s.arrival
+            waited = horizon - call
+            wait += obj["urgency_wait_multiplier"][str(s.urgency)] * waited
+            delay += max(0.0, waited - max_wait[s.urgency])
+        elif s.planned_start is not None:
+            disruption += max(0.0, horizon - s.planned_start)
 
     overtime = sum(max(0.0, end - regular) for end in room_last_end.values())
 
@@ -60,12 +77,19 @@ def objective_components(records, config):
         "disruption": disruption,   # minutes electives moved from their plan
         "imbalance": imbalance,     # std dev of hospital utilization (0-1 scale)
         "transfers": transfers,     # number of inter-hospital transfers
+        "unserved": len(unserved),  # patients who never got surgery
+        "patients": len(records) + len(unserved),  # for per-patient averages; not weighted
     }
 
 
-def objective(records, config):
-    # Weighted sum of the components. Returns (total_cost, components).
-    parts = objective_components(records, config)
+def objective(records, config, unserved=()):
+    """Weighted sum of the components. Returns (total_cost, components).
+
+    `unserved` = sim.unserved(). Only components listed in
+    config["objective"]["weights"] are added up; "patients" is reported
+    but not weighted.
+    """
+    parts = objective_components(records, config, unserved)
     w = config["objective"]["weights"]
-    total = sum(w[name] * value for name, value in parts.items())
+    total = sum(weight * parts[name] for name, weight in w.items())
     return total, parts
