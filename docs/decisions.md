@@ -61,3 +61,12 @@ Configs that have produced results are never edited; add a new config instead.
 **Alternatives:** Randomness inside the simulator (methods would face different days; harder to test).
 **Revisit:** Add the transfer hook in 2.11.
 
+
+## D10 — Overtime and unserved patients in the objective
+**Decision:**
+- Overtime counts only surgeries that *started* during regular hours (before `regular_hours_min`) and ran past it, measured until the room is actually free (`room_release`, so bed-blocking counts). Surgeries started after regular hours are on-call work and don't count.
+- Patients who never get surgery (`sim.unserved()`: still waiting or still travelling when the run stops) are scored: emergencies keep accumulating wait and delay until `horizon_min`; electives count as disrupted until `horizon_min`. Every unserved patient also costs a flat 200 (`weights.unserved`).
+- The objective also reports `patients` (served + unserved), not weighted, for per-patient averages. Raw totals are only compared within the same config.
+**Why:** In a test day (seed 1, emergencies only), night emergencies made overtime 78% of the cost (1733 of 1110 total); with the fix it is 135 of 311. Without the unserved penalty, a policy that never operates would score zero disruption and zero overtime.
+**Choosing 200:** more than the overtime cost of doing the longest procedure late (cardiac, 180 min x 0.5 = 90), so operating late always beats not operating.
+**Revisit:** Weight sensitivity analysis once the evaluation harness (2.9) runs full days.

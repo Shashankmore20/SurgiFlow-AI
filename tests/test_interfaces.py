@@ -3,7 +3,7 @@ from pathlib import Path
 
 from surgiflow.evaluation.objective import objective
 from surgiflow.interfaces import LOG_FIELDS
-from surgiflow.sim.core import Network, Simulator, Surgery
+from surgiflow.sim.core import Network, Simulator, Surgery, fifo_policy
 
 BASE = Path(__file__).resolve().parent.parent / "configs" / "base.json"
 
@@ -81,3 +81,25 @@ def test_allocation_to_incapable_hospital_is_rejected():
     sim.add_emergency(Surgery("x", 60, procedure="trauma"), call_time=0, zone=0)
     with pytest.raises(ValueError):
         sim.run()
+
+
+def test_unserved_lists_patients_still_waiting_or_travelling():
+    sim = Simulator(Network.from_config(BASE))
+    sim.add_surgery(Surgery("done", 60), 0, hospital=0)
+    sim.add_surgery(Surgery("late", 60), 1000, hospital=0)              # arrives after stop
+    sim.add_emergency(Surgery("x", 60, urgency=2, procedure="general"), 90, zone=0)
+    sim.run(until=95)                                                    # x still in the ambulance
+    assert sorted(s.id for s in sim.unserved()) == ["late", "x"]
+
+
+def test_doing_nothing_scores_worse_than_fifo():
+    cfg = json.loads(BASE.read_text())
+
+    def run(policy):
+        sim = Simulator(Network.from_config(BASE), policy=policy)
+        for i in range(4):
+            sim.add_surgery(Surgery(f"e{i}", 90, planned_start=90 * i), 90 * i, hospital=0)
+        sim.run(until=cfg["horizon_min"])
+        return objective(sim.log, cfg, sim.unserved())[0]
+
+    assert run(lambda hospital, clock: None) > run(fifo_policy)

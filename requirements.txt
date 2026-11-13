@@ -31,3 +31,6 @@ torchvision==0.24.1
 tqdm==4.67.1
 typing-extensions==4.15.0
 tzdata==2025.3
+
+# ---- SurgiFlow project additions (pin exact versions) ----
+pytest==9.2.0

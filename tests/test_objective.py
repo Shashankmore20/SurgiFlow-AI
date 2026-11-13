@@ -1,6 +1,7 @@
 import pytest
 
 from surgiflow.evaluation.objective import objective, objective_components
+from surgiflow.sim.core import Surgery
 
 CONFIG = {
     "regular_hours_min": 600,
@@ -60,3 +61,45 @@ def test_total_is_weighted_sum():
     total, parts = objective(recs, CONFIG)
     # wait 360*1 + delay 30*10 + transfers 1*15 + imbalance (0.1 util std)*100
     assert total == pytest.approx(360 + 300 + 15 + parts["imbalance"] * 100)
+
+
+# ---- D10: overtime only for the regular day, unserved patients, patient count ----
+
+def test_night_surgery_is_not_overtime():
+    # started at 700, after regular hours (600): on-call work, not overtime
+    assert objective_components([emergency(2, 650, 700, 900)], CONFIG)["overtime"] == 0
+
+
+def test_surgery_started_before_600_counts_overtime():
+    assert objective_components([elective(550, 550, 650)], CONFIG)["overtime"] == 50
+
+
+def test_bed_blocked_room_counts_until_released():
+    rec = elective(500, 500, 590)
+    rec["room_release"] = 640          # patient stuck in the OR waiting for a bed
+    assert objective_components([rec], CONFIG)["overtime"] == 40
+
+
+def test_unserved_emergency_keeps_waiting_until_horizon():
+    cfg = {**CONFIG, "horizon_min": 1440}
+    s = Surgery("x", 60, emergency=True, urgency=1, call_time=1340)
+    parts = objective_components([], cfg, unserved=[s])
+    assert parts["wait"] == 4 * 100           # waited 100 min, critical x4
+    assert parts["delay"] == 40               # 100 - 60 min limit
+    assert parts["unserved"] == 1 and parts["patients"] == 1
+
+
+def test_unserved_elective_is_disrupted_and_penalized():
+    cfg = {**CONFIG, "horizon_min": 1440}
+    cfg["objective"] = {**CONFIG["objective"],
+                        "weights": {**CONFIG["objective"]["weights"], "unserved": 200}}
+    s = Surgery("e", 90, planned_start=1000)
+    total, parts = objective([], cfg, unserved=[s])
+    assert parts["disruption"] == 440
+    assert total == pytest.approx(0.2 * 440 + 200)
+
+
+def test_patients_is_reported_but_not_weighted():
+    total, parts = objective([elective(0, 0, 100)], CONFIG)
+    assert parts["patients"] == 1
+    assert "patients" not in CONFIG["objective"]["weights"]
