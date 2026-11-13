@@ -6,10 +6,11 @@ Pipeline:
     objective (1.6)  log + config  ->  (cost, components)
 
 Rules:
-  * Policies may read `expected_duration`, never `duration` (the true, hidden one).
+  * Policies may read `duration` (planned), never `actual_duration` (true, hidden).
   * Policies read the network/hospitals but never modify them.
-  * Emergency `arrival` = call time, so its wait includes travel to the hospital.
-  * Elective `arrival` = `planned_start` (it becomes available at its booked time).
+  * Emergencies: `call_time` = when the call came in; `arrival` = when the patient
+    reaches the hospital (set by the simulator). Wait is measured from `call_time`.
+  * Electives: `arrival` = `planned_start` (available at its booked time).
 """
 from __future__ import annotations
 
@@ -29,7 +30,7 @@ class Instance:
     seed: int
     config: dict
     electives: List[Surgery] = field(default_factory=list)   # hospital, planned_room/start set
-    emergencies: List[Surgery] = field(default_factory=list) # zone, arrival (call time) set
+    emergencies: List[Surgery] = field(default_factory=list) # zone, call_time set; hospital chosen by the allocation policy
 
 
 class Generator(Protocol):
@@ -59,6 +60,7 @@ class AllocationPolicy(Protocol):
 
 # Fields in every simulator log record. The objective (1.6) relies on these.
 LOG_FIELDS = (
-    "surgery", "hospital", "room", "kind", "urgency", "procedure",
-    "arrival", "start", "end", "planned_start", "transfers",
+    "surgery", "hospital", "room", "kind", "emergency", "urgency", "procedure",
+    "call_time", "arrival", "start", "end", "planned", "actual",
+    "planned_start", "transfers", "room_release", "blocked_min",
 )

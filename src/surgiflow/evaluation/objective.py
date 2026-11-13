@@ -9,8 +9,9 @@ Expected record format (one dict per surgery in the log):
     room           int    room id within that hospital
     kind           str    "emergency" or "elective"
     urgency        int    1/2/3 for emergencies, None for electives
-    arrival        float  emergencies: minute the call came in (wait includes travel)
+    call_time      float  emergencies: minute the call came in (falls back to arrival)
     start, end     float  surgery start and end minute
+    room_release   float  when the room actually freed (later than end if bed-blocked)
     planned_start  float  original booked start (electives; None = no plan)
     transfers      int    times this patient was moved between hospitals
 """
@@ -33,7 +34,9 @@ def objective_components(records, config):
 
     for r in records:
         if r["kind"] == "emergency":
-            waited = r["start"] - r["arrival"]
+            call = r.get("call_time")
+            call = r["arrival"] if call is None else call
+            waited = r["start"] - call   # includes ambulance travel
             wait += obj["urgency_wait_multiplier"][str(r["urgency"])] * waited
             delay += max(0.0, waited - max_wait[r["urgency"]])
         elif r.get("planned_start") is not None:
@@ -41,7 +44,8 @@ def objective_components(records, config):
         transfers += r.get("transfers", 0)
 
         key = (r["hospital"], r["room"])
-        room_last_end[key] = max(room_last_end.get(key, 0.0), r["end"])
+        freed = r.get("room_release") or r["end"]
+        room_last_end[key] = max(room_last_end.get(key, 0.0), freed)
         busy[r["hospital"]] += r["end"] - r["start"]
 
     overtime = sum(max(0.0, end - regular) for end in room_last_end.values())

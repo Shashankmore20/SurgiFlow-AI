@@ -49,13 +49,14 @@ Configs that have produced results are never edited; add a new config instead.
 
 ## D9 — Shared interfaces (task 1.5)
 **Decision:**
-- `Surgery` is the one shared patient type. New fields: `urgency`, `procedure`, `zone`, `needs_icu`, `expected_duration`, `planned_room`, `planned_start`, `transfers`. `duration` is the true duration.
+- `Surgery` is the one shared patient type. `duration` is the planned length policies see; `actual_duration` is the true, hidden length (2.3). Also: `urgency`, `procedure`, `zone`, `call_time`, `max_wait`, `needs_bed`, `bed_stay`, `planned_room`, `planned_start`, `transfers`.
 - Generator (2.6): `generate(config, seed) -> Instance` (electives + emergencies). All randomness lives here, including later overruns, cancellations and surges.
 - Simulator: `Instance` + policies -> log. Deterministic.
 - Scheduling policy: `policy(hospital, clock) -> Surgery | None` (None keeps the room free).
-- Allocation policy: `allocate(patient, network, clock) -> hospital id`.
+- Allocation policy: `allocate(patient, network, clock) -> hospital id`, called at the emergency's call time (CALL event); default is nearest capable hospital. The patient arrives after the travel time.
 - Every log record has the fields in `interfaces.LOG_FIELDS`, which the objective reads.
-**Rules:** policies see `expected_duration`, never `duration`; policies never modify the network; an emergency's `arrival` is its call time (wait includes travel); an elective's `arrival` is its `planned_start`.
+**Rules:** policies never read `actual_duration`; policies never modify the network; an emergency's wait is measured from `call_time` (includes travel); an elective's `arrival` is its `planned_start`.
+**Update:** names aligned with Zaiba's 2.3–2.5 work (`actual_duration`, `needs_bed`, `call_time`) when merging PR #52.
 **Why:** Lets generator, simulator and policies be built and tested in parallel; the same seed gives every method identical inputs.
 **Alternatives:** Randomness inside the simulator (methods would face different days; harder to test).
 **Revisit:** Add the transfer hook in 2.11.
