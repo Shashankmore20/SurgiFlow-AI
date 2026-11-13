@@ -43,10 +43,10 @@ def test_nearest_capable_respects_capability():
 def test_emergency_arrives_after_travel_time():
     sim = Simulator(network())
     s = Surgery("E0", 60, procedure="general")
-    h = sim.add_emergency(s, call_time=100, zone=0)
+    sim.add_emergency(s, call_time=100, zone=0)   # hospital is chosen when the call happens
     sim.run()
     row = sim.log[0]
-    assert h == 0
+    assert row["hospital"] == 0
     assert row["call_time"] == 100 and row["arrival"] == 108 and row["start"] == 108
     assert row["emergency"] is True
 
@@ -102,3 +102,11 @@ def test_schedule_emergencies_runs_end_to_end():
     sim.run()
     assert len(sim.log) > 0
     assert all(r["emergency"] for r in sim.log)
+
+
+def test_urgency_matches_config_level():
+    for seed in range(20):
+        for call_time, zone, s in generate_emergencies(CFG, random.Random(seed)):
+            level = {60: 1, 240: 2, 1440: 3}[s.max_wait]
+            assert s.urgency == level
+            assert (s.call_time, s.zone) == (call_time, zone)

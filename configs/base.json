@@ -4,12 +4,27 @@
   "regular_hours_min": 600,
 
   "hospitals": [
-    {"id": 0, "name": "Central Trauma Center", "n_or": 4, "n_icu_beds": 8,
-     "capabilities": ["trauma", "cardiac", "general"]},
-    {"id": 1, "name": "Riverside General", "n_or": 3, "n_icu_beds": 4,
-     "capabilities": ["cardiac", "general"]},
-    {"id": 2, "name": "Northside Community", "n_or": 2, "n_icu_beds": 2,
-     "capabilities": ["general"]}
+    {
+      "id": 0,
+      "name": "Central Trauma Center",
+      "n_or": 4,
+      "n_icu_beds": 8,
+      "capabilities": ["trauma", "cardiac", "general"]
+    },
+    {
+      "id": 1,
+      "name": "Riverside General",
+      "n_or": 3,
+      "n_icu_beds": 4,
+      "capabilities": ["cardiac", "general"]
+    },
+    {
+      "id": 2,
+      "name": "Northside Community",
+      "n_or": 2,
+      "n_icu_beds": 2,
+      "capabilities": ["general"]
+    }
   ],
 
   "zones": ["Downtown", "East", "North", "Suburbs"],
@@ -20,26 +35,38 @@
     [30, 20, 15]
   ],
 
-   "transfer_time_min": [
+  "transfer_time_min": [
     [0, 20, 25],
     [20, 0, 30],
     [25, 30, 0]
   ],
 
   "procedures": {
-    "general": {"mean_duration_min": 90,  "icu_prob": 0.10},
-    "cardiac": {"mean_duration_min": 180, "icu_prob": 0.50},
-    "trauma":  {"mean_duration_min": 150, "icu_prob": 0.40}
+    "general": { "mean_duration_min": 90, "icu_prob": 0.1 },
+    "cardiac": { "mean_duration_min": 180, "icu_prob": 0.5 },
+    "trauma": { "mean_duration_min": 150, "icu_prob": 0.4 }
   },
 
-  "electives": {"target_utilization": 0.85},
+  "electives": { "target_utilization": 0.85 },
 
   "emergencies": {
     "arrivals_per_day": 12,
     "urgency_levels": [
-      {"level": 1, "label": "critical",    "max_wait_min": 60,   "prob": 0.2},
-      {"level": 2, "label": "urgent",      "max_wait_min": 240,  "prob": 0.4},
-      {"level": 3, "label": "semi-urgent", "max_wait_min": 1440, "prob": 0.4}
+      { "level": 1, "label": "critical", "max_wait_min": 60, "prob": 0.2 },
+      { "level": 2, "label": "urgent", "max_wait_min": 240, "prob": 0.4 },
+      { "level": 3, "label": "semi-urgent", "max_wait_min": 1440, "prob": 0.4 }
     ]
+  },
+
+  "objective": {
+    "urgency_wait_multiplier": { "1": 4, "2": 2, "3": 1 },
+    "weights": {
+      "wait": 1,
+      "delay": 10,
+      "overtime": 0.5,
+      "disruption": 0.2,
+      "imbalance": 100,
+      "transfers": 15
+    }
   }
 }

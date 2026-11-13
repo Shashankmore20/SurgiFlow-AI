@@ -30,7 +30,7 @@ Configs that have produced results are never edited; add a new config instead.
 **Revisit:** Once baselines and first methods work → add `large.json` / `surge.json`.
 
 ## D6 — Discrete-event simulator core (task 2.1)
-**Decision:** A heap of timed events (ARRIVAL, END). The clock jumps to the earliest event; ties keep insertion order. After every event, free rooms are filled by a pluggable `policy(waiting, clock) -> surgery` (FIFO by default). Output is a log of surgery, room, arrival, start, end.
+**Decision:** A heap of timed events (ARRIVAL, END). The clock jumps to the earliest event; ties keep insertion order. After every event, free rooms are filled by a pluggable scheduling policy (signature updated in D9) (FIFO by default). Output is a log of surgery, room, arrival, start, end.
 **Why:** Exact times and no wasted steps, so it's fast enough for RL training. The policy plug-in lets SA/GA/RL replace FIFO without changing the engine.
 **Alternatives:** Fixed time steps (simpler, but slower and less precise).
 **Revisit:** The policy will likely need more state (rooms, hospital, beds); defined in task 1.5.
@@ -40,3 +40,24 @@ Configs that have produced results are never edited; add a new config instead.
 **Why:** An overloaded hospital can hand patients to one with free capacity, which is the network-coordination gap in the proposal.
 **Alternatives:** No transfers (allocation only at arrival); post-surgery ICU transfers (deferred to task 2.5).
 **Revisit:** When setting objective weights (1.6), tune the transfer penalty.
+
+## D8 — Objective function (task 1.6)
+**Decision:** Cost = 1·wait + 10·delay + 0.5·overtime + 0.2·disruption + 100·imbalance + 15·transfers (weights in `base.json`). Emergency wait is multiplied by urgency (critical x4, urgent x2, semi-urgent x1). All components are also reported separately.
+**Why:** Priority order: missed deadlines > critical waits > other waits > overtime > disruption and balance. One shared function makes every method's score comparable.
+**Alternatives:** Optimizing each metric separately (multi-objective, hard to compare); unweighted sum (minutes of overtime would count as much as minutes a critical patient waits).
+**Revisit:** Sensitivity analysis on the weights once methods are working.
+
+## D9 — Shared interfaces (task 1.5)
+**Decision:**
+- `Surgery` is the one shared patient type. `duration` is the planned length policies see; `actual_duration` is the true, hidden length (2.3). Also: `urgency`, `procedure`, `zone`, `call_time`, `max_wait`, `needs_bed`, `bed_stay`, `planned_room`, `planned_start`, `transfers`.
+- Generator (2.6): `generate(config, seed) -> Instance` (electives + emergencies). All randomness lives here, including later overruns, cancellations and surges.
+- Simulator: `Instance` + policies -> log. Deterministic.
+- Scheduling policy: `policy(hospital, clock) -> Surgery | None` (None keeps the room free).
+- Allocation policy: `allocate(patient, network, clock) -> hospital id`, called at the emergency's call time (CALL event); default is nearest capable hospital. The patient arrives after the travel time.
+- Every log record has the fields in `interfaces.LOG_FIELDS`, which the objective reads.
+**Rules:** policies never read `actual_duration`; policies never modify the network; an emergency's wait is measured from `call_time` (includes travel); an elective's `arrival` is its `planned_start`.
+**Update:** names aligned with Zaiba's 2.3–2.5 work (`actual_duration`, `needs_bed`, `call_time`) when merging PR #52.
+**Why:** Lets generator, simulator and policies be built and tested in parallel; the same seed gives every method identical inputs.
+**Alternatives:** Randomness inside the simulator (methods would face different days; harder to test).
+**Revisit:** Add the transfer hook in 2.11.
+

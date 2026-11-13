@@ -6,22 +6,31 @@ from typing import List, Optional
 
 ## entities: Surgery, OperatingRoom, Hospital and Network
 
-## surgery has facts like: id, duration, priority, emergency, arrival time
-## so we initialize here
+## Surgery is the shared patient type (task 1.5); every module uses it.
+## Policies may read everything EXCEPT actual_duration (the hidden true length).
 @dataclass
 class Surgery:
     id: str
-    duration: int            # planned minutes
-    priority: int = 0        # higher = more urgent (unused by FIFO)
+    duration: int            # planned/expected minutes (what policies see)
+    priority: int = 0        # legacy; use urgency instead
     emergency: bool = False
-    arrival: int = 0         # filled in when the surgery arrives at its hospital
-    hospital: int = 0        # which hospital it is booked at
-    actual_duration: Optional[int] = None  # real length; None = same as duration
+    arrival: int = 0         # filled in when the patient reaches its hospital
+    hospital: int = 0        # hospital it is booked at / sent to
+    actual_duration: Optional[int] = None  # true length; None = same as duration (hidden from policies)
     procedure: str = "general"             # general / cardiac / trauma
     call_time: Optional[int] = None        # emergencies: when the call came in
     max_wait: Optional[int] = None         # emergencies: max acceptable wait (min)
     needs_bed: bool = False                # needs a recovery/ICU bed after surgery
     bed_stay: int = 0                      # minutes it will occupy that bed
+    urgency: Optional[int] = None          # 1 critical, 2 urgent, 3 semi-urgent; None = elective
+    zone: Optional[int] = None             # emergencies: where the call came from
+    planned_room: Optional[int] = None     # electives: booked room
+    planned_start: Optional[int] = None    # electives: booked start minute
+    transfers: int = 0                     # times moved between hospitals (2.11)
+
+    @property
+    def kind(self):
+        return "emergency" if self.emergency else "elective"
 
 ## a room can be empty or holds the surgery in progress
 @dataclass
@@ -33,7 +42,7 @@ class OperatingRoom:
 class Hospital:
     id: int
     n_rooms: int
-    recovery_beds: int = 0   # capacity only for now; enforced in 2.5
+    recovery_beds: int = 0
     name: str = ""
     capabilities: List[str] = field(default_factory=list)
     rooms: List[OperatingRoom] = field(default_factory=list)
@@ -108,20 +117,29 @@ class Network:
         return min(options, key=lambda h: self.travel_time_min[zone][h])
 
 
-## policy function to decide which surgery goes next
-## will call any of the functions we hand it (SA, GA or RL)
-def fifo_policy(waiting, clock):
+## Scheduling policy (task 1.5): policy(hospital, clock) -> Surgery or None.
+## It may read hospital.waiting, hospital.rooms, etc., but must not modify them.
+## Returning None leaves the free room idle for now. SA/GA/RL plug in here.
+def fifo_policy(hospital, clock):
     """Pick the surgery that has been waiting longest."""
-    return waiting[0]
+    return hospital.waiting[0]
+
+
+## Allocation policy (task 1.5): allocate(patient, network, clock) -> hospital id.
+## Called when an emergency call comes in. Baselines (2.8) and RL plug in here.
+def nearest_capable_policy(patient, network, clock):
+    """Send the patient to the closest hospital that can do the procedure."""
+    return network.nearest_capable(patient.zone, patient.procedure)
 
 
 class Simulator:
-    def __init__(self, network, policy=fifo_policy):
+    def __init__(self, network, policy=fifo_policy, allocate=nearest_capable_policy):
         self.clock = 0
         self.network = network
         self.log = []
         self.cancellations = []
         self.policy = policy
+        self.allocate = allocate
         self._events = []
         self._tie = itertools.count()
         self._rows = {}          # surgery id -> its log row
@@ -138,26 +156,29 @@ class Simulator:
         self.schedule(arrival_time, "ARRIVAL", surgery)
 
     def add_emergency(self, surgery, call_time, zone):
-        """Ambulance goes to the nearest capable hospital; the patient shows up
-        there after the travel time. Returns the chosen hospital id."""
+        """The call comes in at call_time. At that moment the allocation policy
+        picks a hospital (seeing the network as it is then), and the patient
+        arrives there after the ambulance travel time."""
         surgery.emergency = True
         surgery.call_time = call_time
-        hospital = self.network.nearest_capable(zone, surgery.procedure)
-        arrive = call_time + self.network.travel_time(zone, hospital)
-        self.add_surgery(surgery, arrive, hospital)
-        return hospital
+        surgery.zone = zone
+        self.schedule(call_time, "CALL", surgery)
 
     def cancel_surgery(self, surgery, time):
         self.schedule(time, "CANCEL", surgery)
 
     ## pop the earliest event and set the clock to its time
+    ## CALL: allocation policy picks a hospital, patient arrives after travel time
     ## ARRIVAL: stamp the arrival time and add the surgery to its hospital's queue
-    ## END: set the room to empty
+    ## END: surgery done (patient moves to a bed or blocks the room)
+    ## BED_FREE: a recovery bed opens up
     ## CANCEL: drop the surgery from the queue (too late if it already started)
     def run(self, until=float("inf")):
         while self._events and self._events[0][0] <= until:
             self.clock, _, kind, data = heapq.heappop(self._events)
-            if kind == "ARRIVAL":
+            if kind == "CALL":
+                self._on_call(data)
+            elif kind == "ARRIVAL":
                 data.arrival = self.clock
                 self.network.hospitals[data.hospital].waiting.append(data)
             elif kind == "END":
@@ -172,27 +193,40 @@ class Simulator:
                         {"surgery": data.id, "hospital": h.id, "time": self.clock})
             self._dispatch()
 
+    def _on_call(self, s):
+        h = self.allocate(s, self.network, self.clock)
+        if s.procedure not in self.network.hospitals[h].capabilities:
+            raise ValueError(f"allocation sent {s.id} ({s.procedure}) to hospital {h}, "
+                             "which can't do that procedure")
+        s.hospital = h
+        self.schedule(self.clock + self.network.travel_time(s.zone, h), "ARRIVAL", s)
+
     ## runs after every event and fills any free room from the waiting list
     def _dispatch(self):
         for h in self.network.hospitals:
             for room in h.rooms:
-                if room.current is None and h.waiting:
-                    s = self.policy(h.waiting, self.clock)
-                    h.waiting.remove(s)
-                    room.current = s
-                    actual = s.actual_duration if s.actual_duration is not None else s.duration
-                    end = self.clock + actual
-                    row = {
-                        "surgery": s.id, "hospital": h.id, "room": room.id,
-                        "arrival": s.arrival, "start": self.clock, "end": end,
-                        "planned": s.duration, "actual": actual,
-                        "emergency": s.emergency,
-                        "call_time": s.call_time if s.call_time is not None else s.arrival,
-                        "room_release": None, "blocked_min": 0,
-                    }
-                    self.log.append(row)
-                    self._rows[s.id] = row
-                    self.schedule(end, "END", room)
+                if room.current is not None or not h.waiting:
+                    continue
+                s = self.policy(h, self.clock)
+                if s is None:          # policy chose to keep this room free
+                    break
+                h.waiting.remove(s)
+                room.current = s
+                actual = s.actual_duration if s.actual_duration is not None else s.duration
+                end = self.clock + actual
+                row = {
+                    "surgery": s.id, "hospital": h.id, "room": room.id,
+                    "kind": s.kind, "emergency": s.emergency,
+                    "urgency": s.urgency, "procedure": s.procedure,
+                    "call_time": s.call_time if s.call_time is not None else s.arrival,
+                    "arrival": s.arrival, "start": self.clock, "end": end,
+                    "planned": s.duration, "actual": actual,
+                    "planned_start": s.planned_start, "transfers": s.transfers,
+                    "room_release": None, "blocked_min": 0,
+                }
+                self.log.append(row)
+                self._rows[s.id] = row
+                self.schedule(end, "END", room)
 
     ## surgery is over. If the patient needs a bed and one is free, they move to it
     ## and the room is released. If no bed is free they stay in the room (blocking

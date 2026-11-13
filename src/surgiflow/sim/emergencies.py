@@ -31,6 +31,7 @@ def generate_emergencies(cfg, rng):
             duration=planned,
             # config level 1 = most urgent, but priority is "higher = more urgent"
             priority=len(levels) + 1 - lv["level"],
+            urgency=lv["level"],          # 1 = critical (what the objective uses)
             emergency=True,
             actual_duration=sample_actual_duration(planned, rng),
             procedure=proc,
@@ -38,7 +39,8 @@ def generate_emergencies(cfg, rng):
             needs_bed=needs_bed,
             bed_stay=bed_stay,
         )
-        out.append((int(t), rng.randrange(n_zones), s))
+        s.call_time, s.zone = int(t), rng.randrange(n_zones)
+        out.append((s.call_time, s.zone, s))
         i += 1
     return out
 
