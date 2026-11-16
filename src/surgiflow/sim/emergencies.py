@@ -23,7 +23,12 @@ def generate_emergencies(cfg, rng):
         if t >= cfg["horizon_min"]:
             break
         lv = rng.choices(levels, weights=weights)[0]
-        proc = rng.choice(procedures)                     # equally likely for now
+        mix = em.get("procedure_mix")
+        if mix:
+            names = list(mix)
+            proc = rng.choices(names, weights=[mix[p] for p in names])[0]
+        else:
+            proc = rng.choice(procedures)                      # equally likely for now
         planned = cfg["procedures"][proc]["mean_duration_min"]
         needs_bed, bed_stay = sample_bed_need(cfg["procedures"][proc], rng)
         s = Surgery(
