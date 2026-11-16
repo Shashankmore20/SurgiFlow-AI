@@ -9,6 +9,32 @@ pip install -r requirements.txt
 pip install -e .      # makes `import surgiflow` work everywhere
 ```
 
+## Evaluate
+
+Compare methods on the same seeded days:
+
+```bash
+python scripts/evaluate.py                        # all methods, 50 days, all CPU cores
+python scripts/evaluate.py --seeds 200
+python scripts/evaluate.py --methods fifo+nearest urgency+nearest
+```
+
+Prints a summary table and saves `results/eval_<timestamp>/` (per-day results, summary, head-to-head comparison, run info). Add new methods in `src/surgiflow/evaluation/methods.py`.
+
+## Demo
+
+Replay a simulated day: ORs, ambulances, queues and beds, animated.
+
+```bash
+python scripts/demo.py                                   # interactive window
+python scripts/demo.py --seed 12 --method urgency+nearest
+python scripts/demo.py --save results/demo.gif           # export for slides (~2 min)
+```
+
+Controls: space = play/pause, right/left = faster/slower, home = restart, drag the slider to jump in time.
+
+![demo](docs/images/demo.png)
+
 ## Repository structure
 
 ```

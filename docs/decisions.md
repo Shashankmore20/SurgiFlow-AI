@@ -103,3 +103,19 @@ Configs that have produced results are never edited; add a new config instead.
 **Assumptions and sources:** The 85% target and the 70/30 mix are modelling assumptions; none of our reviewed papers gives values for them. The 5% cancellation rate is also an assumption (all causes, before the planned start); the only sourced figure we found is lower and narrower: about 1.1% of elective surgeries in England cancelled by hospitals for non-clinical reasons in 2019–20 (NHS England, cited in Gökalp, Gülpınar & Doan 2023, _EJOR_ 309, 832–844). The modelling choices are in line with the literature: lognormal surgery durations (Gökalp et al. 2023, citing May et al. 2000 and Strum et al. 1998, 2000; also Shehadeh & Padman 2022, _Computers & OR_ 137, 105523), planned duration equal to the procedure's average with the actual duration random and exponential gaps between emergency arrivals (Zhao et al. 2026, _IJPR_ 64(2), 719–750), and a 10-hour regular OR day (Gökalp et al. 2023). Overtime and idle time are both costly (Shehadeh & Padman 2022; Zhao et al. 2026), which is why rooms are filled to about 85% rather than 100%. All numbers are in the config so they can be varied.
 
 **Revisit:** Whether to use 1.1% (or run it as a sensitivity case) once the team decides; if we find sourced figures for utilization or case mix; if the simulator starts using `planned_room`; when SA/GA replace the default plan (disruption is then measured against their plan); late cancellations if the objective adds a cancellation cost; cancellations caused by bed or capacity shortage (reported as a real cause in Shehadeh & Padman 2022 and Gökalp et al. 2023; ours are random).
+
+
+
+## D13 — Demo viewer (2.10 / 5.5)
+**Decision:** An animated, interactive replay of one simulated day built with matplotlib (`src/surgiflow/viz/`, run with `scripts/demo.py`): Gantt chart of every OR, a map with ambulances moving from zone to hospital, and live bars for ORs busy, patients waiting and beds in use. Play/pause, speed and a time slider; exports to GIF/MP4 for slides.
+**How it works:** The simulation runs first; the viewer only replays its log (`Timeline.state_at(t)`), so it can't affect results. `timeline.py` has no plotting code and is tested in CI. The demo uses the same days and methods as the harness, so it always shows what was measured.
+**Why matplotlib, not pygame:** Already installed, the same drawing code gives static report figures and video exports, and it can be tested headless.
+**Note:** Map positions are for display only; travel times still come from `travel_time_min`.
+
+## D14 — Evaluation harness (2.9)
+**Decision:** `evaluation/harness.py` + `scripts/evaluate.py` run every method on the same seeded days from the generator (default 50) and report, per method: mean cost, 95% confidence interval, per-patient cost and each component; plus a head-to-head count against a reference method (better / worse / tied on the same day). Results go to a new `results/eval_<timestamp>/` folder with the config, seeds, methods and git commit.
+**Fresh state per run:** every (method, day) gets a new `Network`, new patients (`load_instance` deep-copies) and a new `Setup`. Reusing a Network took seed 1 from cost 1261 to 47,916 (Emmanuel's check), because rooms busy at minute 1440 were never freed.
+**Adding methods (2.8, SA, GA, RL):** a top-level `build(cfg) -> Setup` in `evaluation/methods.py`. `Setup.before_run` lets SA/GA replace the elective plan before the day starts.
+**Why paired comparison:** methods face identical days, so "better on 155/200 days" removes day-to-day luck that averages alone hide.
+**Why standard library only:** CI installs only pytest.
+**First result (200 days, base.json):** urgency-first + nearest beat FIFO + nearest on 155 days, tied 45, lost 0; mean cost 1124 vs 1657, mostly by cutting minutes past the safe-wait limit (4 vs 29) at the price of more elective disruption (1478 vs 1269).
