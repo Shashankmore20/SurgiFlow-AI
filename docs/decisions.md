@@ -104,7 +104,19 @@ Configs that have produced results are never edited; add a new config instead.
 
 **Revisit:** Whether to use 1.1% (or run it as a sensitivity case) once the team decides; if we find sourced figures for utilization or case mix; if the simulator starts using `planned_room`; when SA/GA replace the default plan (disruption is then measured against their plan); late cancellations if the objective adds a cancellation cost; cancellations caused by bed or capacity shortage (reported as a real cause in Shehadeh & Padman 2022 and Gökalp et al. 2023; ours are random).
 
+## D12 — Durations, emergencies/cancellations and the bed layer (tasks 2.3–2.5)
 
+**Decision:**
+- Actual duration is lognormal around the planned duration (`sample_actual_duration`, sigma 0.25). The mu shift keeps the average equal to the planned length, so some cases overrun and some finish early. Minimum 1 minute. Policies only see `duration` (planned).
+- Emergencies arrive as a Poisson process (`arrivals_per_day`). Urgency is drawn from `urgency_levels`, the procedure from `emergencies.procedure_mix` (uniform if the key is missing), and the zone uniformly.
+- Bed layer: after surgery a patient needs an ICU/recovery bed with probability `icu_prob` per procedure. The stay is lognormal (sigma 0.3) around `icu_stay_min` (default 480). A room stays blocked until a bed frees up (`blocked_min`).
+- All draws happen in the generator, so every method sees the same patients (D9).
+
+**Why:** Lognormal is the standard model for surgery durations (Gökalp et al. 2023, citing May et al. 2000 and Strum et al. 1998, 2000; Shehadeh & Padman 2022). A 10-hour regular OR day (600 min) matches Gökalp et al. 2023. Downstream beds limit OR throughput (Shehadeh & Padman 2022).
+
+**Assumptions:** sigma values, the 480-min default stay and the emergency procedure mix are modelling choices, not sourced.
+
+**Revisit:** Fit sigma per procedure if we find data. Add `icu_stay_min` per procedure to base.json.
 
 ## D13 — Demo viewer (2.10 / 5.5)
 **Decision:** An animated, interactive replay of one simulated day built with matplotlib (`src/surgiflow/viz/`, run with `scripts/demo.py`): Gantt chart of every OR, a map with ambulances moving from zone to hospital, and live bars for ORs busy, patients waiting and beds in use. Play/pause, speed and a time slider; exports to GIF/MP4 for slides.
