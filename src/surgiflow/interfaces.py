@@ -31,6 +31,7 @@ class Instance:
     config: dict
     electives: List[Surgery] = field(default_factory=list)   # hospital, planned_room/start set
     emergencies: List[Surgery] = field(default_factory=list) # zone, call_time set; hospital chosen by the allocation policy
+    cancellations: List[tuple[str, int]] = field(default_factory=list)  # (surgery id, cancel minute), all before planned_start
 
 
 class Generator(Protocol):
