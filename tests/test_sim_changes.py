@@ -125,3 +125,12 @@ def test_allocation_policy_can_see_earlier_calls_in_transit():
                           call_time=i, zone=0)
     sim.run()
     assert seen == [0, 1, 2]                # each call sees the ones before it
+
+
+def test_emergency_cancelled_before_call_has_no_hospital():
+    sim = Simulator(Network.single(1))
+    s = Surgery("E1", 60, urgency=1)
+    sim.add_emergency(s, call_time=100, zone=0)
+    sim.cancel_surgery(s, 50)
+    sim.run()
+    assert sim.cancellations == [{"surgery": "E1", "hospital": None, "time": 50}]

@@ -145,7 +145,7 @@ class Simulator:
         self._events = []
         self._tie = itertools.count()
         self._rows = {}          # surgery id -> its log row
-        self._cancelled = set()  # ids cancelled before they started  (newly added 11/15/26)
+        self._cancelled = set()  # ids cancelled before they started
 
     ## adds event to the heap as a tuple
     ## python sorts tuples left to right, so events order by time first
@@ -179,13 +179,6 @@ class Simulator:
     def run(self, until=float("inf")):
         while self._events and self._events[0][0] <= until:
             self.clock, _, kind, data = heapq.heappop(self._events)
-           
-            ''' if kind == "CALL":
-                self._on_call(data)
-            elif kind == "ARRIVAL":
-                data.arrival = self.clock
-                self.network.hospitals[data.hospital].waiting.append(data)
-                '''
             if kind == "CALL":
                 if data.id not in self._cancelled:
                     self._on_call(data)
@@ -200,15 +193,6 @@ class Simulator:
                 self._on_surgery_end(data)  # data is the room
             elif kind == "BED_FREE":
                 self._on_bed_free(data)     # data is the hospital
-                
-                '''
-                elif kind == "CANCEL":
-                h = self.network.hospitals[data.hospital]
-                if data in h.waiting:   # too late if already started
-                    h.waiting.remove(data)
-                    self.cancellations.append(
-                        {"surgery": data.id, "hospital": h.id, "time": self.clock}) '''
-            
             elif kind == "CANCEL":
                 h = self.network.hospitals[data.hospital]
                 if data in h.waiting:                 # in the queue: remove it (as before)
@@ -218,10 +202,12 @@ class Simulator:
                 elif data.id not in self._rows and data.id not in self._cancelled:
                     # hasn't started and isn't queued yet: remember it, drop it on arrival
                     self._cancelled.add(data.id)
+                    # an emergency cancelled before its call has no hospital yet
+                    known = (not data.emergency) or (data in h.inbound)
                     if data in h.inbound:
                         h.inbound.remove(data)
                     self.cancellations.append(
-                        {"surgery": data.id, "hospital": h.id, "time": self.clock})
+                        {"surgery": data.id, "hospital": h.id if known else None, "time": self.clock})
                 # else: already started (too late) or already cancelled: do nothing
 
             self._dispatch()
@@ -231,7 +217,6 @@ class Simulator:
     ## Cancelled surgeries are not included. The objective penalizes these (D10).
     def unserved(self):
         out = [s for h in self.network.hospitals for s in h.waiting]
-        'out += [data for _, _, kind, data in self._events if kind in ("CALL", "ARRIVAL")]'
         out += [data for _, _, kind, data in self._events
                 if kind in ("CALL", "ARRIVAL") and data.id not in self._cancelled]
         return out
