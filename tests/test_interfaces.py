@@ -103,3 +103,11 @@ def test_doing_nothing_scores_worse_than_fifo():
         return objective(sim.log, cfg, sim.unserved())[0]
 
     assert run(lambda hospital, clock: None) > run(fifo_policy)
+
+def test_instance_cancellations_default_empty():
+    """Instance built without cancellations still works (backward compatible),
+    and each Instance gets its own list (not one shared list)."""
+    from surgiflow.interfaces import Instance
+    inst = Instance(seed=1, config={})
+    assert inst.cancellations == []
+    assert Instance(seed=1, config={}).cancellations is not inst.cancellations
