@@ -53,11 +53,11 @@ def _electives(config, rng):
                 planned = proc_cfg["mean_duration_min"]
                 if abs(t + planned - target) >= abs(t - target):
                     break                        # this case would not get closer: room is full
-                needs_bed, bed_stay = sample_bed_need(proc_cfg, rng)
+                needs_bed, bed_stay = sample_bed_need(proc_cfg, rng, sigma=config.get("bed_stay_sigma", 0.3))
                 out.append(Surgery(
                     id=f"H{h['id']}-R{room}-{k}",
                     duration=planned,
-                    actual_duration=sample_actual_duration(planned, rng),
+                    actual_duration=sample_actual_duration(planned, rng, sigma=config.get("duration_sigma", 0.25)),
                     procedure=proc,
                     hospital=h["id"],
                     planned_room=room,

@@ -12,7 +12,6 @@ from typing import List, Optional
 class Surgery:
     id: str
     duration: int            # planned/expected minutes (what policies see)
-    priority: int = 0        # legacy; use urgency instead
     emergency: bool = False
     arrival: int = 0         # filled in when the patient reaches its hospital
     hospital: int = 0        # hospital it is booked at / sent to

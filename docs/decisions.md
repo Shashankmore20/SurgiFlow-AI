@@ -111,6 +111,7 @@ Configs that have produced results are never edited; add a new config instead.
 - Emergencies arrive as a Poisson process (`arrivals_per_day`). Urgency is drawn from `urgency_levels`, the procedure from `emergencies.procedure_mix` (uniform if the key is missing), and the zone uniformly.
 - Bed layer: after surgery a patient needs an ICU/recovery bed with probability `icu_prob` per procedure. The stay is lognormal (sigma 0.3) around `icu_stay_min` (default 480). A room stays blocked until a bed frees up (`blocked_min`).
 - All draws happen in the generator, so every method sees the same patients (D9).
+- Config keys: duration_sigma (0.25), bed_stay_sigma (0.3), procedures.*.icu_stay_min (480), emergencies.procedure_mix (general 0.5 / trauma 0.3 / cardiac 0.2), electives.procedure_mix, electives.cancellation_prob. Code keeps these values as defaults. priority removed; urgency (1 = critical) is the only urgency field.
 
 **Why:** Lognormal is the standard model for surgery durations (Gökalp et al. 2023, citing May et al. 2000 and Strum et al. 1998, 2000; Shehadeh & Padman 2022). A 10-hour regular OR day (600 min) matches Gökalp et al. 2023. Downstream beds limit OR throughput (Shehadeh & Padman 2022).
 

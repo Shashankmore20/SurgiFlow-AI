@@ -43,7 +43,7 @@ class SchedulingPolicy(Protocol):
     """Called when a room is free and someone is waiting at `hospital`.
 
     Return one of hospital.waiting to start now, or None to keep the room free.
-    Examples: FIFO (core.fifo_policy), priority-first (2.7), SA/GA (3.x), RL (4.x).
+    Examples: FIFO (core.fifo_policy), urgency-first (2.7), SA/GA (3.x), RL (4.x).
     """
     def __call__(self, hospital: Hospital, clock: float) -> Optional[Surgery]: ...
 
