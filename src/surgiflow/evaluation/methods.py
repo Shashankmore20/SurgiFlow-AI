@@ -46,7 +46,7 @@ def build_urgency_nearest(cfg):
     return Setup(urgency_first_policy, nearest_capable_policy)
 
 
-# 2.8 capacity-aware allocation: add e.g. build_urgency_capacity here.
+# ---- 2.8 capacity-aware allocation ----------------------------------------
 def build_fifo_capacity(cfg):
     return Setup(fifo_policy, capacity_aware_policy)
 
