@@ -1,14 +1,36 @@
-"""Tests for the baseline policies in surgiflow.agents.baselines (task 2.7).
+"""Tests for the baseline policies in surgiflow.agents.baselines (tasks 2.7 and 2.8).
 
-urgency_first_policy rule, in priority order:
+urgency_first_policy (2.7, scheduling) rule, in priority order:
   1. lower urgency number first (1 critical, 2 urgent, 3 semi-urgent)
   2. electives (urgency None) after every emergency
   3. ties: earlier arrival first, then lower id (so results are deterministic)
 It must never return None while someone waits, and never modify hospital.waiting.
-"""
-from surgiflow.agents.baselines import urgency_first_policy
-from surgiflow.sim.core import Hospital, Network, Simulator, Surgery, fifo_policy
 
+capacity_aware_policy (2.8, allocation) rule:
+  1. only hospitals that can do the patient's procedure
+  2. pick the one where surgery is expected to start soonest
+     (travel + estimated queue wait, planned durations only; everyone already
+     waiting or inbound there is assumed to go first)
+  3. ties: nearer hospital first, then lower id
+It must never read actual_duration, and never modify the network.
+"""
+import copy
+from pathlib import Path
+
+import pytest
+
+from surgiflow.agents.baselines import capacity_aware_policy, urgency_first_policy
+from surgiflow.sim.core import (Hospital, Network, Simulator, Surgery,
+                                fifo_policy, nearest_capable_policy)
+
+CONFIG_PATH = Path(__file__).parent.parent / "configs" / "base.json"
+CENTRAL, RIVERSIDE, NORTHSIDE = 0, 1, 2   # hospital ids in base.json
+DOWNTOWN = 0                              # zone; travel from it: Central 8, Riverside 15, Northside 20
+
+
+# =====================================================================
+# Task 2.7: urgency_first_policy (scheduling)
+# =====================================================================
 
 # ---------- helpers ----------
 
@@ -99,3 +121,157 @@ def test_same_scenario_under_fifo_is_different():
     the urgency rule, not by accident."""
     start = run_scenario(fifo_policy)
     assert start["ELECTIVE"] == 100 and start["CRIT"] == 160
+
+
+# =====================================================================
+# Task 2.8: capacity_aware_policy (allocation)
+# =====================================================================
+
+# ---------- helpers ----------
+
+def net():
+    """The real 3-hospital network from base.json, with nobody in it."""
+    return Network.from_config(CONFIG_PATH)
+
+
+def occupy(hospital, room, free_at, now=300):
+    """Put a surgery in a room that started an hour before `now` and whose
+    PLANNED end is minute `free_at` (the only end an allocator may look at)."""
+    busy = Surgery(f"busy-{hospital.id}-{room}", duration=free_at - (now - 60))
+    busy.start_time = now - 60
+    hospital.rooms[room].current = busy
+
+
+def call(procedure="general", zone=DOWNTOWN, id="NEW"):
+    """A new emergency call (urgent, 90 planned minutes) from `zone`."""
+    return Surgery(id, duration=90, urgency=2, emergency=True, procedure=procedure, zone=zone)
+
+
+def jammed_central_free_riverside():
+    """The network at minute 300, with the nearest hospital overloaded:
+         Central    rooms free at 360/390/420/450, 3 patients waiting (90 min each)
+         Riverside  one room busy until 310, two rooms free
+         Northside  both rooms busy until 400
+    Estimated call-to-surgery for a general call from Downtown:
+         Central 150 min, Riverside 15 min, Northside 100 min."""
+    n = net()
+    for room, free_at in enumerate([360, 390, 420, 450]):
+        occupy(n.hospitals[CENTRAL], room, free_at)
+    n.hospitals[CENTRAL].waiting = [s(f"W{i}", None, 250, duration=90) for i in range(3)]
+    occupy(n.hospitals[RIVERSIDE], 0, 310)
+    occupy(n.hospitals[NORTHSIDE], 0, 400)
+    occupy(n.hospitals[NORTHSIDE], 1, 400)
+    return n
+
+
+# ---------- unit tests: the choosing rule itself ----------
+
+def test_empty_network_behaves_like_nearest():
+    """Nobody anywhere: no queue to avoid, so the nearest capable hospital wins,
+    from every zone and for every procedure."""
+    n = net()
+    for zone in range(4):
+        for proc in ("general", "cardiac", "trauma"):
+            p = call(proc, zone)
+            assert capacity_aware_policy(p, n, 0) == nearest_capable_policy(p, n, 0)
+
+
+def test_avoids_jammed_nearest_hospital():
+    """Central is nearest (8 min) but the estimated start there is minute 450
+    (150 min away). Riverside is 15 min away with a free room: start at 315.
+    Capacity-aware picks Riverside; nearest-capable (the control) picks Central."""
+    n = jammed_central_free_riverside()
+    assert nearest_capable_policy(call(), n, 300) == CENTRAL
+    assert capacity_aware_policy(call(), n, 300) == RIVERSIDE
+
+
+def test_trauma_always_goes_to_the_only_capable_hospital():
+    """Only Central does trauma, so it goes there however busy Central is."""
+    n = jammed_central_free_riverside()
+    assert capacity_aware_policy(call("trauma"), n, 300) == CENTRAL
+
+
+def test_cardiac_never_goes_to_northside():
+    """Northside is empty and Central/Riverside are full, but Northside can't
+    do cardiac, so it is never chosen."""
+    n = net()
+    for h in (CENTRAL, RIVERSIDE):
+        for room in range(len(n.hospitals[h].rooms)):
+            occupy(n.hospitals[h], room, 600)
+    assert capacity_aware_policy(call("cardiac"), n, 300) in (CENTRAL, RIVERSIDE)
+
+
+def test_inbound_patients_count_as_ahead():
+    """Central has ONE free room left. With nobody inbound it is the best choice.
+    Add one ambulance already heading there and that room is spoken for,
+    so the same call now goes to Riverside."""
+    n = net()
+    for room in range(3):                                      # room 3 stays free
+        occupy(n.hospitals[CENTRAL], room, 500)
+    assert capacity_aware_policy(call(), n, 300) == CENTRAL
+    n.hospitals[CENTRAL].inbound = [s("AMB", 1, duration=120)]
+    assert capacity_aware_policy(call(), n, 300) == RIVERSIDE
+
+
+def test_overrunning_surgery_counts_as_free_now_not_in_the_past():
+    """All Central rooms hold surgeries planned to end at 250, and it is now 300
+    (they are overrunning). The rooms count as free now, not free in the past,
+    so the estimated start is the arrival (308) and Central is still chosen."""
+    n = net()
+    for room in range(4):
+        occupy(n.hospitals[CENTRAL], room, 250)
+    assert capacity_aware_policy(call(), n, 300) == CENTRAL
+
+
+def test_tie_goes_to_nearer_hospital():
+    """Every room everywhere frees at 400, after any ambulance would arrive, so
+    all three hospitals give the same estimate. The nearer one, Central, wins."""
+    n = net()
+    for h, rooms in ((CENTRAL, 4), (RIVERSIDE, 3), (NORTHSIDE, 2)):
+        for room in range(rooms):
+            occupy(n.hospitals[h], room, 400)
+    assert capacity_aware_policy(call(), n, 300) == CENTRAL
+
+
+def test_no_capable_hospital_raises():
+    """A procedure no hospital offers is a setup error: raise a clear ValueError
+    instead of sending the patient somewhere that can't operate."""
+    with pytest.raises(ValueError):
+        capacity_aware_policy(call("neuro"), net(), 0)
+
+
+def test_allocation_does_not_modify_the_network():
+    """Allocation policies only read the network (D9 rule). Every hospital's
+    rooms, waiting list and inbound list are unchanged after the call."""
+    n = jammed_central_free_riverside()
+    before = copy.deepcopy(n.hospitals)
+    capacity_aware_policy(call(), n, 300)
+    assert n.hospitals == before
+
+
+# ---------- integration tests: policy plugged into the real Simulator ----------
+
+def run_three_calls(allocate):
+    """Three one-room hospitals that all do general surgery, at 5/10/15 minutes
+    from the only zone. Three calls (P0, P1, P2; 120 min each) come in at minute 0.
+    Returns {surgery id: (hospital, start minute)}."""
+    hospitals = [Hospital(i, 1, capabilities=["general"]) for i in range(3)]
+    sim = Simulator(Network(hospitals, ["Z"], [[5, 10, 15]]), allocate=allocate)
+    for i in range(3):
+        sim.add_emergency(s(f"P{i}", 2, duration=120), call_time=0, zone=0)
+    sim.run()
+    return {r["surgery"]: (r["hospital"], r["start"]) for r in sim.log}
+
+
+def test_in_simulator_three_calls_spread_out():
+    """Capacity-aware sees the earlier ambulances (inbound) and sends each call
+    to a different hospital, so the last patient starts at minute 15."""
+    assert run_three_calls(capacity_aware_policy) == {
+        "P0": (0, 5), "P1": (1, 10), "P2": (2, 15)}
+
+
+def test_same_three_calls_under_nearest_all_queue_at_one_hospital():
+    """Control: nearest-capable sends all three to hospital 0, where they queue
+    for its single room, so the last patient starts at minute 245."""
+    assert run_three_calls(nearest_capable_policy) == {
+        "P0": (0, 5), "P1": (0, 125), "P2": (0, 245)}

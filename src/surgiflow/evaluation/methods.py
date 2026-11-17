@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Optional
 
-from surgiflow.agents.baselines import urgency_first_policy
+from surgiflow.agents.baselines import capacity_aware_policy, urgency_first_policy
 from surgiflow.sim.core import fifo_policy, nearest_capable_policy
 
 
@@ -47,8 +47,16 @@ def build_urgency_nearest(cfg):
 
 
 # 2.8 capacity-aware allocation: add e.g. build_urgency_capacity here.
+def build_fifo_capacity(cfg):
+    return Setup(fifo_policy, capacity_aware_policy)
+
+
+def build_urgency_capacity(cfg):
+    return Setup(urgency_first_policy, capacity_aware_policy)
 
 METHODS = {m.name: m for m in [
     Method("fifo+nearest", build_fifo_nearest),
     Method("urgency+nearest", build_urgency_nearest),
+    Method("fifo+capacity", build_fifo_capacity),
+    Method("urgency+capacity", build_urgency_capacity),
 ]}
