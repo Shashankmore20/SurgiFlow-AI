@@ -92,7 +92,7 @@ Configs that have produced results are never edited; add a new config instead.
 - Electives are the hospital's default plan. Every room is filled back to back from minute 0. Each case is general (0.7) or cardiac (0.3), never trauma, and only procedures the hospital can do (Northside: general only). Planned duration = the procedure's `mean_duration_min`; `actual_duration` is hidden. A case is added only if it brings the room's planned total closer to the target (`target_utilization` × `regular_hours_min` = 510); otherwise the room is full. `arrival = planned_start`. Ids are `H{hospital}-R{room}-{k}` (unique, never clashing with emergency ids `E0, E1, ...`).
 - Cancellations: each elective with `planned_start > 0` is cancelled with probability `cancellation_prob` (0.05), at a uniform minute in `[0, planned_start)`. Every elective uses exactly two draws, so changing the probability never moves anyone's cancel time. Stored in `Instance.cancellations` as `(surgery_id, minute)`.
 - `load_instance` deep-copies the instance and loads electives, emergencies, then cancellations (matched to the copies by id), in that fixed order. Each run also needs a fresh `Network`, since the simulator writes into hospitals too.
-- Config keys `electives.procedure_mix` and `electives.cancellation_prob` come from `base.json`; the generator falls back to the same values (0.7/0.3, 0.05) if a config omits them..
+- Config keys `electives.procedure_mix` and `electives.cancellation_prob` come from `base.json`; the generator falls back to the same values (0.7/0.3, 0.05) if a config omits them.
 
 **Why:** Separate streams keep each part of the day independent, so tuning one part doesn't change the others. Every method gets the same day (common random numbers). The "closer to target" rule never plans a room past regular hours (a room stops between 420 and 599 planned minutes), so overtime only comes from overruns and emergencies. Cancelling only before `planned_start` makes cancellations the same under every method; a later cancellation would depend on the policy and, since the objective doesn't score cancellations, would reward delaying electives. The deepcopy stops one run from leaking `start_time`, `arrival` and `hospital` into the next.
 
@@ -112,7 +112,7 @@ Configs that have produced results are never edited; add a new config instead.
 - Emergencies arrive as a Poisson process (`arrivals_per_day`). Urgency is drawn from `urgency_levels`, the procedure from `emergencies.procedure_mix` (uniform if the key is missing), and the zone uniformly.
 - Bed layer: after surgery a patient needs an ICU/recovery bed with probability `icu_prob` per procedure. The stay is lognormal (sigma 0.3) around `icu_stay_min` (default 480). A room stays blocked until a bed frees up (`blocked_min`).
 - All draws happen in the generator, so every method sees the same patients (D9).
-- Config keys: duration_sigma (0.25), bed_stay_sigma (0.3), procedures.*.icu_stay_min (480), emergencies.procedure_mix (general 0.5 / trauma 0.3 / cardiac 0.2), electives.procedure_mix, electives.cancellation_prob. Code keeps these values as defaults. priority removed; urgency (1 = critical) is the only urgency field.
+- Config keys: duration_sigma (0.25), bed_stay_sigma (0.3), procedures.\*.icu_stay_min (480), emergencies.procedure_mix (general 0.5 / trauma 0.3 / cardiac 0.2), electives.procedure_mix, electives.cancellation_prob. Code keeps these values as defaults. priority removed; urgency (1 = critical) is the only urgency field.
 
 **Why:** Lognormal is the standard model for surgery durations (Gökalp et al. 2023, citing May et al. 2000 and Strum et al. 1998, 2000; Shehadeh & Padman 2022). A 10-hour regular OR day (600 min) matches Gökalp et al. 2023. Downstream beds limit OR throughput (Shehadeh & Padman 2022).
 
@@ -142,9 +142,9 @@ Configs that have produced results are never edited; add a new config instead.
 
 **Why:** An emergency's wait is measured from the call and includes travel (D9), so this estimates exactly what the objective scores. Nearest-capable ignores queues. Counting `inbound` stops several calls in a row from all being sent to the same "empty" hospital. Assuming everyone is ahead makes no assumption about the scheduling policy it is paired with, and never underestimates the wait.
 
-**Limits:** Uses planned durations only, so estimates are wrong when surgeries overrun. Ignores recovery beds (a room blocked waiting for a bed looks free), booked electives that have not arrived yet, and future calls. Under urgency-first it overestimates the wait of urgent patients, who would jump the queue. With the current emergency mix, half the calls are trauma and can only go to Central, so there is a choice for only about half.
+**Limits:** Uses planned durations only, so estimates are wrong when surgeries overrun. Ignores recovery beds (a room blocked waiting for a bed looks free), booked electives that have not arrived yet, and future calls. Under urgency-first it overestimates the wait of urgent patients, who would jump the queue. Trauma calls (30% of emergencies) can only go to Central, so there is no choice for them.
 
-**Result (200 days, base.json, harness D14):** vs nearest with the same scheduler, mean cost 1507 vs 1745 under FIFO (better on 96 days, worse on 28, tied 76) and 1093 vs 1138 under urgency-first (better on 80, worse on 43, tied 77). A modest gain; under urgency-first the difference in means is within the 95% intervals. Scheduling matters more than allocation here (urgency-first vs FIFO: 1138 vs 1745).
+**Result (200 days, base.json, harness D14):** vs nearest with the same scheduler, mean cost 1282 vs 1547 under FIFO (better on 112 days, worse on 25, tied 63) and 1000 vs 1049 under urgency-first (better on 85, worse on 50, tied 65). A modest gain; under urgency-first the difference in means is within the 95% intervals. Scheduling matters more than allocation here (urgency-first vs FIFO: 1049 vs 1547).
 
 **Alternatives:** Count only patients at least as urgent as ahead (accurate with urgency-first, too optimistic with FIFO); least-loaded hospital ignoring travel; a hard rule preferring hospitals that meet `max_wait` (minimizing the estimate already favours them).
 
@@ -152,13 +152,13 @@ Configs that have produced results are never edited; add a new config instead.
 
 ## D16 — Urgency-first scheduling baseline (task 2.7)
 
-**Decision:** `urgency_first_policy(hospital, clock)` in `agents/baselines.py`. When a room is free it picks the waiting patient with the smallest `(urgency, arrival, id)`: lower urgency number first (1 critical, 2 urgent, 3 semi-urgent), electives (urgency `None`) after every emergency, ties to the earlier arrival, then the lower id. It never returns `None` while someone is waiting, reads only `urgency`, `arrival` and `id`, and does not modify `hospital.waiting`. FCFS already exists as `fifo_policy` in `core.py`. Uses `urgency`, not the legacy `priority` field. Written after the fact; merged in PR #58.
+**Decision:** `urgency_first_policy(hospital, clock)` in `agents/baselines.py`. When a room is free it picks the waiting patient with the smallest `(urgency, arrival, id)`: lower urgency number first (1 critical, 2 urgent, 3 semi-urgent), electives (urgency `None`) after every emergency, ties to the earlier arrival, then the lower id. It never returns `None` while someone is waiting, reads only `urgency`, `arrival` and `id`, and does not modify `hospital.waiting`. FCFS already exists as `fifo_policy` in `core.py`.
 
 **Why:** The objective weights emergency waits by urgency and charges 10 per minute past `max_wait` (D8), so serving the most urgent first is the simplest rule aimed at the largest costs, and it is what a human scheduler would do by default. The id as the last tie-break makes the choice deterministic, so runs are reproducible (D9). Never idling a room keeps it a plain dispatching rule that is easy to compare against.
 
 **Limits:** Electives can starve if emergencies keep arriving. Non-preemptive (a surgery in progress is never interrupted). Ignores `max_wait`, durations, overtime and what is about to arrive.
 
-**Result (200 days, base.json, harness D14):** vs FIFO with nearest-hospital allocation, mean cost 1138 vs 1745; better on 156 days, worse on 3, tied 41. Minutes past the safe-wait limit drop from 35 to 4, at the price of more elective disruption (1431 vs 1218).
+**Result (200 days, base.json, harness D14):** vs FIFO with nearest-hospital allocation, mean cost 1049 vs 1547; better on 157 days, worse on 1, tied 42. Minutes past the safe-wait limit drop from 26 to 3, at the price of more elective disruption (1360 vs 1187).
 
 **Alternatives:** Earliest deadline first (`call_time + max_wait`); shortest planned duration first; urgency with aging so electives cannot starve; holding a room free for expected emergencies.
 
