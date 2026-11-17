@@ -79,17 +79,8 @@ def test_generator_is_reproducible_and_sane():
            [(t, z, s.id, s.procedure, s.actual_duration) for t, z, s in b]
     times = [t for t, _, _ in a]
     assert times == sorted(times) and all(0 <= t < 1440 for t in times)
-    assert all(s.priority in (1, 2, 3) and s.emergency for _, _, s in a)
+    assert all(s.urgency in (1, 2, 3) and s.emergency for _, _, s in a)
     assert all(0 <= z < 4 for _, z, _ in a)
-
-
-def test_priority_is_higher_for_more_urgent():
-    by_wait = {}
-    for seed in range(20):
-        for _, _, s in generate_emergencies(CFG, random.Random(seed)):
-            by_wait[s.max_wait] = s.priority
-    assert by_wait[60] == 3 and by_wait[240] == 2 and by_wait[1440] == 1
-
 
 def test_average_arrivals_per_day():
     counts = [len(generate_emergencies(CFG, random.Random(s))) for s in range(300)]
@@ -110,3 +101,8 @@ def test_urgency_matches_config_level():
             level = {60: 1, 240: 2, 1440: 3}[s.max_wait]
             assert s.urgency == level
             assert (s.call_time, s.zone) == (call_time, zone)
+
+def test_procedure_mix_is_used():
+    cfg = {**CFG, "emergencies": {**CFG["emergencies"], "procedure_mix": {"trauma": 1.0}}}
+    em = generate_emergencies(cfg, random.Random(0))
+    assert em and all(s.procedure == "trauma" for _, _, s in em)

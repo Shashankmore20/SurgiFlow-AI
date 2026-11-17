@@ -30,15 +30,13 @@ def generate_emergencies(cfg, rng):
         else:
             proc = rng.choice(procedures)                      # equally likely for now
         planned = cfg["procedures"][proc]["mean_duration_min"]
-        needs_bed, bed_stay = sample_bed_need(cfg["procedures"][proc], rng)
+        needs_bed, bed_stay = sample_bed_need(cfg["procedures"][proc], rng, sigma=cfg.get("bed_stay_sigma", 0.3))
         s = Surgery(
             id=f"E{i}",
             duration=planned,
-            # config level 1 = most urgent, but priority is "higher = more urgent"
-            priority=len(levels) + 1 - lv["level"],
-            urgency=lv["level"],          # 1 = critical (what the objective uses)
             emergency=True,
-            actual_duration=sample_actual_duration(planned, rng),
+            urgency=lv["level"],
+            actual_duration=sample_actual_duration(planned, rng, sigma=cfg.get("duration_sigma", 0.25)),
             procedure=proc,
             max_wait=lv["max_wait_min"],
             needs_bed=needs_bed,

@@ -2,6 +2,8 @@
   "time_unit": "minutes",
   "horizon_min": 1440,
   "regular_hours_min": 600,
+  "duration_sigma": 0.25,
+  "bed_stay_sigma": 0.3,
 
   "hospitals": [
     {
@@ -42,20 +44,20 @@
   ],
 
   "procedures": {
-    "general": { "mean_duration_min": 90, "icu_prob": 0.1 },
-    "cardiac": { "mean_duration_min": 180, "icu_prob": 0.5 },
-    "trauma": { "mean_duration_min": 150, "icu_prob": 0.4 }
+    "general": { "mean_duration_min": 90, "icu_prob": 0.1, "icu_stay_min": 480 },
+    "cardiac": { "mean_duration_min": 180, "icu_prob": 0.5, "icu_stay_min": 480 },
+    "trauma": { "mean_duration_min": 150, "icu_prob": 0.4, "icu_stay_min": 480 }
   },
 
-    "electives": {
+  "electives": {
     "target_utilization": 0.85,
     "procedure_mix": { "general": 0.7, "cardiac": 0.3 },
     "cancellation_prob": 0.05
-    },
+  },
 
   "emergencies": {
     "arrivals_per_day": 12,
-    "procedure_mix": { "trauma": 0.5, "general": 0.3, "cardiac": 0.2 },
+    "procedure_mix": { "trauma": 0.3, "general": 0.5, "cardiac": 0.2 },
     "urgency_levels": [
       { "level": 1, "label": "critical", "max_wait_min": 60, "prob": 0.2 },
       { "level": 2, "label": "urgent", "max_wait_min": 240, "prob": 0.4 },

@@ -3,7 +3,7 @@ from .durations import sample_actual_duration
 DEFAULT_STAY_MIN = 480   # used when base.json has no icu_stay_min for a procedure
 
 
-def sample_bed_need(proc_cfg, rng):
+def sample_bed_need(proc_cfg, rng, sigma=0.3):
     """Does this patient need a recovery/ICU bed afterwards, and for how long?
 
     Decided up front with the seeded generator (like durations), so every
@@ -12,4 +12,4 @@ def sample_bed_need(proc_cfg, rng):
     if rng.random() >= proc_cfg.get("icu_prob", 0.0):
         return False, 0
     mean = proc_cfg.get("icu_stay_min", DEFAULT_STAY_MIN)
-    return True, sample_actual_duration(mean, rng, sigma=0.3)
+    return True, sample_actual_duration(mean, rng, sigma=sigma)
