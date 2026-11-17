@@ -55,7 +55,7 @@
 
   "emergencies": {
     "arrivals_per_day": 12,
-    "procedure_mix": { "trauma": 0.5, "general": 0.3, "cardiac": 0.2 },
+    "procedure_mix": { "trauma": 0.3, "general": 0.5, "cardiac": 0.2 },
     "urgency_levels": [
       { "level": 1, "label": "critical", "max_wait_min": 60, "prob": 0.2 },
       { "level": 2, "label": "urgent", "max_wait_min": 240, "prob": 0.4 },
