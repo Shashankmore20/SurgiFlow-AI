@@ -148,3 +148,17 @@ Configs that have produced results are never edited; add a new config instead.
 **Alternatives:** Count only patients at least as urgent as ahead (accurate with urgency-first, too optimistic with FIFO); least-loaded hospital ignoring travel; a hard rule preferring hospitals that meet `max_wait` (minimizing the estimate already favours them).
 
 **Revisit:** Urgency-aware queue estimate; include bed availability; if the emergency procedure mix changes; RL allocation (4.x) should beat this.
+
+## D16 — Urgency-first scheduling baseline (task 2.7)
+
+**Decision:** `urgency_first_policy(hospital, clock)` in `agents/baselines.py`. When a room is free it picks the waiting patient with the smallest `(urgency, arrival, id)`: lower urgency number first (1 critical, 2 urgent, 3 semi-urgent), electives (urgency `None`) after every emergency, ties to the earlier arrival, then the lower id. It never returns `None` while someone is waiting, reads only `urgency`, `arrival` and `id`, and does not modify `hospital.waiting`. FCFS already exists as `fifo_policy` in `core.py`. Uses `urgency`, not the legacy `priority` field. Written after the fact; merged in PR #58.
+
+**Why:** The objective weights emergency waits by urgency and charges 10 per minute past `max_wait` (D8), so serving the most urgent first is the simplest rule aimed at the largest costs, and it is what a human scheduler would do by default. The id as the last tie-break makes the choice deterministic, so runs are reproducible (D9). Never idling a room keeps it a plain dispatching rule that is easy to compare against.
+
+**Limits:** Electives can starve if emergencies keep arriving. Non-preemptive (a surgery in progress is never interrupted). Ignores `max_wait`, durations, overtime and what is about to arrive.
+
+**Result (200 days, base.json, harness D14):** vs FIFO with nearest-hospital allocation, mean cost 1138 vs 1745; better on 156 days, worse on 3, tied 41. Minutes past the safe-wait limit drop from 35 to 4, at the price of more elective disruption (1431 vs 1218).
+
+**Alternatives:** Earliest deadline first (`call_time + max_wait`); shortest planned duration first; urgency with aging so electives cannot starve; holding a room free for expected emergencies.
+
+**Revisit:** Add an earliest-deadline baseline if the team wants a third; aging if elective starvation shows up in results; SA/GA and RL scheduling (3.x, 4.x) should beat this.
