@@ -93,7 +93,11 @@ class Network:
     @classmethod
     def from_config(cls, path):
         with open(path) as f:
-            cfg = json.load(f)
+            return cls.from_dict(json.load(f))
+
+    @classmethod
+    def from_dict(cls, cfg):
+        """Same as from_config, from a config already loaded (SA builds many networks)."""
         hospitals = [
             Hospital(id=h["id"], n_rooms=h["n_or"], recovery_beds=h["n_icu_beds"],
                      name=h["name"], capabilities=h["capabilities"])
@@ -145,6 +149,7 @@ class Simulator:
         self._tie = itertools.count()
         self._rows = {}          # surgery id -> its log row
         self._cancelled = set()  # ids cancelled before they started
+        self._started = False
 
     ## adds event to the heap as a tuple
     ## python sorts tuples left to right, so events order by time first
@@ -169,6 +174,25 @@ class Simulator:
     def cancel_surgery(self, surgery, time):
         self.schedule(time, "CANCEL", surgery)
 
+    ## SA/GA (3.x): replace the elective plan before the day runs.
+    ## starts = {id: (hospital, room, start)}. Each listed elective gets its new
+    ## planned room/start, and its pending ARRIVAL moves to the new start. Tie
+    ## numbers are kept, so same-minute events stay in their load order.
+    def apply_plan(self, starts):
+        if self._started:
+            raise ValueError("apply_plan must be called before the day runs")
+        events = []
+        for time, tie, kind, data in self._events:
+            if kind == "ARRIVAL" and not data.emergency and data.id in starts:
+                h, room, start = starts[data.id]
+                if h != data.hospital:
+                    raise ValueError(f"plan moves {data.id} to another hospital")
+                data.planned_room, data.planned_start = room, start
+                time = start
+            events.append((time, tie, kind, data))
+        heapq.heapify(events)
+        self._events = events
+
     ## pop the earliest event and set the clock to its time
     ## CALL: allocation policy picks a hospital, patient arrives after travel time
     ## ARRIVAL: stamp the arrival time and add the surgery to its hospital's queue
@@ -176,6 +200,7 @@ class Simulator:
     ## BED_FREE: a recovery bed opens up
     ## CANCEL: drop the surgery from the queue (too late if it already started)
     def run(self, until=float("inf")):
+        self._started = True
         while self._events and self._events[0][0] <= until:
             self.clock, _, kind, data = heapq.heappop(self._events)
             if kind == "CALL":
