@@ -163,3 +163,24 @@ Configs that have produced results are never edited; add a new config instead.
 **Alternatives:** Earliest deadline first (`call_time + max_wait`); shortest planned duration first; urgency with aging so electives cannot starve; holding a room free for expected emergencies.
 
 **Revisit:** Add an earliest-deadline baseline if the team wants a third; aging if elective starvation shows up in results; SA/GA and RL scheduling (3.x, 4.x) should beat this.
+
+## D17 — Elective plan representation and neighbour moves (task 3.1)
+
+**Decision:** `agents/plan.py`. A plan is, per hospital and room, the ordered list of elective ids; start times are derived back to back from minute 0 using planned durations. Electives never change hospital, each appears once, and no room is planned past `regular_hours_min`. Moves: swap two cases in a room, swap two cases between rooms of one hospital, move one case to another room of the same hospital. Same-length swaps are rejected (they change no start time). Plans are immutable; a move returns a new Plan.
+**Why:** Small, cheap moves for SA (3.3), and the same representation works as a GA chromosome (3.4). Only planned durations are used (D9).
+**Finding:** Cases are 90 or 180 min and most rooms are planned at 540, so on full days only reordering within a room is feasible (~18% of random moves allowed over 50 days).
+**Revisit:** A soft regular-hours limit penalised through the cost (3.2) if SA needs more freedom; `planned_room` is not enforced by the simulator (D11).
+
+## D18 — Plan cost and stability penalty (task 3.2)
+
+**Decision:** `agents/plan_cost.py`. Cost of a plan = mean objective (D8) over K = 8 sampled days, each run through the real simulator with the method's own scheduling and allocation policies. A sampled day redraws every elective's actual duration and bed need (config sigmas) and a fresh set of emergencies, from the stream `seed*1000 + 7`. Scenarios are built once per day and shared by every plan (common random numbers). No cancellations in scenarios. Stability = Σ |start − ref start| + 30 per room change; cost = expected + λ·stability, λ = 0 for static planning. Adds `Network.from_dict`.
+**Why:** Optimises exactly what the harness measures; the planner sees only planned durations and procedures (D9). Common random numbers make small differences between plans detectable.
+**Revisit:** K and the 30-minute room-change weight; λ for 3.5; sampling cancellations.
+
+## D19 — Simulated annealing for the static elective plan (task 3.3)
+
+**Decision:** `agents/sa.py`, registered as `sa+urgency+capacity`. Starts from the default plan; T0 set so an average uphill move is accepted with probability 0.8 (from 30 sampled moves); geometric cooling to 1% of T0 over 1000 iterations; keeps the best plan; own stream `seed*1000 + 8`. Runs in `Setup.before_run`; `Simulator.apply_plan` moves each elective's arrival to its new start and sets `planned_start` (disruption is measured against the committed plan). About 0.3 s per day.
+**Result (50 days, base.json):** vs `urgency+capacity`, mean cost 981.5 vs 981.6, better on 26 days, worse on 24; mean daily difference 0 (95% CI ±46). No measurable gain.
+**Why no gain:** (1) SA overfits its 8 scenarios: plans it finds are 124 cheaper on those but only ~19 cheaper on 60 fresh scenarios (15 days); K = 30 doesn't help (16 out of sample, 4× slower), so noise is not the limit. (2) The search space is narrow (D17): on full days SA can only reorder. (3) The simulator ignores `planned_room` and urgency-first serves emergencies first, so the plan mainly sets when electives become available.
+**Side effect:** Moving a case earlier than its D11 cancellation time means it is operated on instead of cancelled (1.12 vs 1.4 cancellations per day). This is not information leakage (SA never sees cancellations); operating on these patients mostly adds cost (disruption, overtime), so it does not favour SA.
+**Revisit:** Soft regular-hours limit (D17); enforcing `planned_room` in the simulator; warm-start replanning on disruption (3.5), where a plan can react to what actually happens; GA (3.4) on the same cost for comparison.
