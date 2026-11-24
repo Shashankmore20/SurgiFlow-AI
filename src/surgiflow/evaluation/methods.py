@@ -16,12 +16,14 @@ to METHODS. It must be top-level (no lambdas) so the parallel runner can send
 it to other processes.
 """
 from __future__ import annotations
-
+from functools import partial
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 from surgiflow.agents.baselines import capacity_aware_policy, urgency_first_policy
 from surgiflow.sim.core import fifo_policy, nearest_capable_policy
+
+from surgiflow.agents.sa import sa_before_run
 
 
 @dataclass
@@ -54,9 +56,21 @@ def build_fifo_capacity(cfg):
 def build_urgency_capacity(cfg):
     return Setup(urgency_first_policy, capacity_aware_policy)
 
+
+# ---- 3.3 simulated annealing on the elective plan -------------------------
+def build_sa_urgency_capacity(cfg):
+    return Setup(urgency_first_policy, capacity_aware_policy, before_run=sa_before_run)
+
+
+def build_sa_fast(cfg):
+    """Small budget for tests and quick checks."""
+    return Setup(urgency_first_policy, capacity_aware_policy,
+                 before_run=partial(sa_before_run, iters=40, k=2))
+
 METHODS = {m.name: m for m in [
     Method("fifo+nearest", build_fifo_nearest),
     Method("urgency+nearest", build_urgency_nearest),
     Method("fifo+capacity", build_fifo_capacity),
     Method("urgency+capacity", build_urgency_capacity),
+    Method("sa+urgency+capacity", build_sa_urgency_capacity),
 ]}
